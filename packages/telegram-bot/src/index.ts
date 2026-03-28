@@ -54,8 +54,24 @@ app.post('/api/telegram', async (c) => {
       return c.json({ ok: true })
     }
 
+    // Photo message → capture with caption
+    if (message.photo && message.photo.length > 0) {
+      await handlePhoto(c.env, chatId, message.photo, message.caption)
+      return c.json({ ok: true })
+    }
+
     // Text message (with or without command)
     if (message.text) {
+      // Special commands that don't push to brain
+      if (message.text === '/status') {
+        await handleStatus(c.env, chatId)
+        return c.json({ ok: true })
+      }
+      if (message.text === '/help' || message.text === '/start') {
+        await handleHelp(c.env.TELEGRAM_BOT_TOKEN, chatId)
+        return c.json({ ok: true })
+      }
+
       await handleText(c.env, chatId, message.text)
       return c.json({ ok: true })
     }
@@ -130,6 +146,97 @@ async function handleVoice(env: Env, chatId: number, voice: TelegramVoice): Prom
   await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Captured: ${content.slice(0, 50)}`)
 }
 
+async function handlePhoto(
+  env: Env,
+  chatId: number,
+  photos: TelegramPhoto[],
+  caption?: string
+): Promise<void> {
+  // Use the largest photo (last in array)
+  const largest = photos[photos.length - 1]
+
+  // Get file URL from Telegram
+  const fileResp = await fetch(
+    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id: largest.file_id }),
+    }
+  )
+  const fileData = (await fileResp.json()) as {
+    ok: boolean
+    result?: { file_path: string }
+  }
+
+  if (!fileData.ok || !fileData.result?.file_path) {
+    throw new Error('Failed to get photo file from Telegram')
+  }
+
+  const imageUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${fileData.result.file_path}`
+  const captionText = caption?.trim() || 'photo capture'
+
+  const { path, content } = parseCommand(captionText)
+  const slug = slugify(content.slice(0, 40))
+  const filename = `${Date.now()}-${slug}.md`
+  const fullPath = `${path}${filename}`
+
+  const nodeContent = `---\ncaptured: ${new Date().toISOString()}\nsource: telegram-photo\nimage: ${imageUrl}\n---\n\n${content}\n\n![photo](${imageUrl})`
+
+  await pushToBrain(env, fullPath, nodeContent, `photo capture: ${content.slice(0, 50)}`)
+  await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Captured: ${content.slice(0, 50)}`)
+}
+
+async function handleStatus(env: Env, chatId: number): Promise<void> {
+  const resp = await fetch(
+    'https://api.github.com/repos/AetherCreator/SuperClaude/contents/brain/ACTIVE-STATE.md',
+    {
+      headers: {
+        Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+        Accept: 'application/vnd.github.v3.raw',
+        'User-Agent': 'Lamora-Bot',
+      },
+    }
+  )
+
+  if (!resp.ok) {
+    await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, '⚠️ Could not fetch ACTIVE-STATE.md')
+    return
+  }
+
+  const content = await resp.text()
+  // Send first 3000 chars (Telegram message limit is 4096)
+  const summary = content.length > 3000 ? content.slice(0, 3000) + '\n\n... (truncated)' : content
+  await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, `📋 ACTIVE STATE\n\n${summary}`)
+}
+
+async function handleHelp(token: string, chatId: number): Promise<void> {
+  const help = [
+    '🏴‍☠️ *Lamora — Gentleman Bastard*',
+    '',
+    '*Capture Commands:*',
+    '/note [text] → quick capture (session)',
+    '/idea [text] → knowledge base',
+    '/bake [text] → chef/professional',
+    '/coci [text] → family',
+    '/money [text] → finance',
+    '',
+    '*Other:*',
+    '🎤 Voice message → auto-transcribed & captured',
+    '📷 Photo + caption → captured with image',
+    '/status → current ACTIVE-STATE summary',
+    '/help → this message',
+    '',
+    'Plain text (no command) → captured to session.',
+  ].join('\n')
+
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: help, parse_mode: 'Markdown' }),
+  })
+}
+
 // --- Brain push ---
 
 async function pushToBrain(
@@ -199,7 +306,7 @@ interface TelegramMessage {
   from?: { id: number; first_name: string }
   text?: string
   voice?: TelegramVoice
-  photo?: Array<{ file_id: string; width: number; height: number }>
+  photo?: TelegramPhoto[]
   caption?: string
   date: number
 }
@@ -207,6 +314,12 @@ interface TelegramMessage {
 interface TelegramVoice {
   file_id: string
   duration: number
+}
+
+interface TelegramPhoto {
+  file_id: string
+  width: number
+  height: number
 }
 
 export default app
