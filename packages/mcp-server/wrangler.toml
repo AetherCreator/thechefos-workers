@@ -1,10 +1,15 @@
 name = "thechefos-mcp-server"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
 
-[[kv_namespaces]]
-binding = "SESSION_KV"
-id = "e9dfcffc9e094365aec142267cb39a1e"
+[[durable_objects.bindings]]
+name = "MCP_SERVER"
+class_name = "ChefOSMCP"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChefOSMCP"]
 
 [vars]
 GITHUB_OWNER = "AetherCreator"
