@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 export interface Env {
   GITHUB_TOKEN: string
   MCP_AUTH_TOKEN: string
+  SESSION_KV: KVNamespace
   GITHUB_OWNER: string
   GITHUB_REPO: string
   GITHUB_BRANCH: string
@@ -198,20 +199,49 @@ async function handleRpc(env: Env, req: JsonRpcRequest) {
   }
 }
 
+// ---------- Protected Resource Metadata (OAuth 2.1) ----------
+
+app.get('/.well-known/oauth-protected-resource', (c) => {
+  return c.json({
+    resource: 'https://api.thechefos.app/api/mcp',
+    authorization_servers: ['https://api.thechefos.app'],
+  })
+})
+
 // ---------- Auth middleware ----------
 
 app.use('*', async (c, next) => {
-  // Allow health check without auth
-  if (c.req.path === '/health') return next()
+  const path = c.req.path
+  if (path === '/health' || path === '/.well-known/oauth-protected-resource') {
+    return next()
+  }
 
   const authHeader = c.req.header('Authorization')
   const token = authHeader?.replace('Bearer ', '')
 
-  if (!token || token !== c.env.MCP_AUTH_TOKEN) {
-    return c.json({ error: 'Unauthorized' }, 401)
+  if (!token) {
+    return c.json({ error: 'Unauthorized' }, 401, {
+      'WWW-Authenticate': 'Bearer resource_metadata="https://api.thechefos.app/api/mcp/.well-known/oauth-protected-resource"',
+    })
   }
 
-  await next()
+  // Check static MCP_AUTH_TOKEN first (existing fallback)
+  if (token === c.env.MCP_AUTH_TOKEN) {
+    return next()
+  }
+
+  // Check OAuth token in KV
+  const stored = await c.env.SESSION_KV.get(`oauth:token:${token}`)
+  if (stored) {
+    const tokenData = JSON.parse(stored) as { expires_at: number }
+    if (tokenData.expires_at > Date.now()) {
+      return next()
+    }
+  }
+
+  return c.json({ error: 'Unauthorized' }, 401, {
+    'WWW-Authenticate': 'Bearer resource_metadata="https://api.thechefos.app/api/mcp/.well-known/oauth-protected-resource"',
+  })
 })
 
 // ---------- Routes ----------
