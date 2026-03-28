@@ -1,19 +1,29 @@
-// packages/oauth-server/src/index.ts
 import { Hono } from 'hono'
 
 export interface Env {
   SESSION_KV: KVNamespace
 }
 
-const app = new Hono<{ Bindings: Env }>()
-
 const ISSUER = 'https://api.thechefos.app'
-const AUTH_CODE_TTL = 600 // 10 minutes
+const AUTH_CODE_TTL = 600      // 10 minutes
 const ACCESS_TOKEN_TTL = 86400 // 24 hours
 
-// ---------- OAuth 2.1 Authorization Server Metadata ----------
+const app = new Hono<{ Bindings: Env }>()
 
+// OAuth metadata — public, no auth
 app.get('/.well-known/oauth-authorization-server', (c) => {
+  return c.json({
+    issuer: ISSUER,
+    authorization_endpoint: `${ISSUER}/oauth/authorize`,
+    token_endpoint: `${ISSUER}/oauth/token`,
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none'],
+  })
+})
+
+// Also handle when accessed via /oauth prefix (router passes full path)
 app.get('/oauth/.well-known/oauth-authorization-server', (c) => {
   return c.json({
     issuer: ISSUER,
@@ -26,10 +36,8 @@ app.get('/oauth/.well-known/oauth-authorization-server', (c) => {
   })
 })
 
-// ---------- GET /authorize — render approval page ----------
-
-app.get('/oauth/authorize', (c) => {
-app.get('/authorize', (c) => {
+// GET /authorize — approval page (handles both /authorize and /oauth/authorize)
+const handleGetAuthorize = (c: any) => {
   const clientId = c.req.query('client_id')
   const redirectUri = c.req.query('redirect_uri')
   const state = c.req.query('state')
@@ -39,7 +47,6 @@ app.get('/authorize', (c) => {
   if (clientId !== 'claude') {
     return c.text('Unknown client_id', 400)
   }
-
   if (!redirectUri) {
     return c.text('Missing redirect_uri', 400)
   }
@@ -54,15 +61,17 @@ app.get('/authorize', (c) => {
     .card { background: #1a1a2e; border: 1px solid #333; border-radius: 12px; padding: 2rem; max-width: 400px; text-align: center; }
     h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
     p { color: #999; margin-bottom: 1.5rem; }
-    button { background: #6c5ce7; color: white; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+    .pirate { font-size: 2rem; margin-bottom: 1rem; }
+    button { background: #6c5ce7; color: white; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; cursor: pointer; width: 100%; }
     button:hover { background: #5a4bd1; }
   </style>
 </head>
 <body>
   <div class="card">
+    <div class="pirate">🏴‍☠️</div>
     <h1>SuperClaude</h1>
     <p>Allow <strong>Claude</strong> to access your Brain, OPS-BOARD, and skills?</p>
-    <form method="POST" action="/authorize">
+    <form method="POST" action="/oauth/authorize">
       <input type="hidden" name="client_id" value="${clientId}" />
       <input type="hidden" name="redirect_uri" value="${redirectUri}" />
       <input type="hidden" name="state" value="${state || ''}" />
@@ -75,12 +84,13 @@ app.get('/authorize', (c) => {
 </html>`
 
   return c.html(html)
-})
+}
 
-// ---------- POST /authorize — generate auth code, redirect ----------
+app.get('/authorize', handleGetAuthorize)
+app.get('/oauth/authorize', handleGetAuthorize)
 
-app.post('/oauth/authorize', async (c) => {
-app.post('/authorize', async (c) => {
+// POST /authorize — generate auth code, redirect
+const handlePostAuthorize = async (c: any) => {
   const body = await c.req.parseBody()
   const clientId = body['client_id'] as string
   const redirectUri = body['redirect_uri'] as string
@@ -91,7 +101,6 @@ app.post('/authorize', async (c) => {
   if (clientId !== 'claude') {
     return c.text('Unknown client_id', 400)
   }
-
   if (!redirectUri) {
     return c.text('Missing redirect_uri', 400)
   }
@@ -112,17 +121,16 @@ app.post('/authorize', async (c) => {
 
   const url = new URL(redirectUri)
   url.searchParams.set('code', code)
-  if (state) {
-    url.searchParams.set('state', state)
-  }
+  if (state) url.searchParams.set('state', state)
 
   return c.redirect(url.toString(), 302)
-})
+}
 
-// ---------- POST /token — exchange code for access token ----------
+app.post('/authorize', handlePostAuthorize)
+app.post('/oauth/authorize', handlePostAuthorize)
 
-app.post('/oauth/token', async (c) => {
-app.post('/token', async (c) => {
+// POST /token — exchange code for access token
+const handlePostToken = async (c: any) => {
   const body = await c.req.parseBody()
   const grantType = body['grant_type'] as string
   const code = body['code'] as string
@@ -132,7 +140,6 @@ app.post('/token', async (c) => {
   if (grantType !== 'authorization_code') {
     return c.json({ error: 'unsupported_grant_type' }, 400)
   }
-
   if (!code) {
     return c.json({ error: 'invalid_request', error_description: 'Missing code' }, 400)
   }
@@ -142,7 +149,6 @@ app.post('/token', async (c) => {
     return c.json({ error: 'invalid_grant', error_description: 'Code expired or invalid' }, 400)
   }
 
-  // Delete code immediately (single use)
   await c.env.SESSION_KV.delete(`oauth:code:${code}`)
 
   const codeData = JSON.parse(stored) as {
@@ -156,24 +162,20 @@ app.post('/token', async (c) => {
   if (codeData.expires_at < Date.now()) {
     return c.json({ error: 'invalid_grant', error_description: 'Code expired' }, 400)
   }
-
   if (clientId && clientId !== codeData.client_id) {
     return c.json({ error: 'invalid_client' }, 400)
   }
 
-  // PKCE validation if code_challenge was provided
   if (codeData.code_challenge) {
     if (!codeVerifier) {
       return c.json({ error: 'invalid_request', error_description: 'Missing code_verifier' }, 400)
     }
-
     const encoder = new TextEncoder()
     const digest = await crypto.subtle.digest('SHA-256', encoder.encode(codeVerifier))
     const computed = btoa(String.fromCharCode(...new Uint8Array(digest)))
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '')
-
     if (computed !== codeData.code_challenge) {
       return c.json({ error: 'invalid_grant', error_description: 'PKCE verification failed' }, 400)
     }
@@ -196,9 +198,10 @@ app.post('/token', async (c) => {
     token_type: 'Bearer',
     expires_in: ACCESS_TOKEN_TTL,
   })
-})
+}
 
-// ---------- Health ----------
+app.post('/token', handlePostToken)
+app.post('/oauth/token', handlePostToken)
 
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-oauth-server' }))
 
