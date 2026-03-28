@@ -1,0 +1,13 @@
+name = "thechefos-brain-search"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "superclaude-brain"
+
+# Secrets (configured via `wrangler secret put`):
+# GITHUB_TOKEN — read-only SuperClaude PAT for GitHub API
