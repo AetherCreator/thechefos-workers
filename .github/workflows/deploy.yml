@@ -100,11 +100,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install root deps
+        run: npm install
       - name: Deploy
         working-directory: packages/brain-search
-        run: |
-          npm install
-          npx wrangler deploy --keep-vars
+        run: npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -117,11 +117,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install root deps
+        run: npm install
       - name: Deploy
         working-directory: packages/oauth-server
-        run: |
-          npm install
-          npx wrangler deploy --keep-vars
+        run: npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
