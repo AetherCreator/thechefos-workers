@@ -5,8 +5,8 @@ import { cors } from 'hono/cors'
 export interface Env {
   AI_GATEWAY: Fetcher
   BRAIN_WRITE: Fetcher
-  BRAIN_SEARCH: Fetcher
   MCP_SERVER: Fetcher
+  OAUTH_SERVER: Fetcher
   TELEGRAM_BOT: Fetcher
 }
 
@@ -24,9 +24,9 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret'],
 }))
 
-// Brain search (before brain write catch-all)
-app.all('/api/brain/search', (c) => c.env.BRAIN_SEARCH.fetch(c.req.raw))
-app.all('/api/brain/index', (c) => c.env.BRAIN_SEARCH.fetch(c.req.raw))
+// OAuth authorization server
+app.all('/oauth/*', (c) => c.env.OAUTH_SERVER.fetch(c.req.raw))
+app.get('/.well-known/oauth-authorization-server', (c) => c.env.OAUTH_SERVER.fetch(c.req.raw))
 
 // Brain write webhook
 app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
@@ -47,7 +47,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app
