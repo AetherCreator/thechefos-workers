@@ -14,6 +14,7 @@ const ACCESS_TOKEN_TTL = 86400 // 24 hours
 // ---------- OAuth 2.1 Authorization Server Metadata ----------
 
 app.get('/.well-known/oauth-authorization-server', (c) => {
+app.get('/oauth/.well-known/oauth-authorization-server', (c) => {
   return c.json({
     issuer: ISSUER,
     authorization_endpoint: `${ISSUER}/oauth/authorize`,
@@ -27,6 +28,7 @@ app.get('/.well-known/oauth-authorization-server', (c) => {
 
 // ---------- GET /authorize — render approval page ----------
 
+app.get('/oauth/authorize', (c) => {
 app.get('/authorize', (c) => {
   const clientId = c.req.query('client_id')
   const redirectUri = c.req.query('redirect_uri')
@@ -77,6 +79,7 @@ app.get('/authorize', (c) => {
 
 // ---------- POST /authorize — generate auth code, redirect ----------
 
+app.post('/oauth/authorize', async (c) => {
 app.post('/authorize', async (c) => {
   const body = await c.req.parseBody()
   const clientId = body['client_id'] as string
@@ -118,6 +121,7 @@ app.post('/authorize', async (c) => {
 
 // ---------- POST /token — exchange code for access token ----------
 
+app.post('/oauth/token', async (c) => {
 app.post('/token', async (c) => {
   const body = await c.req.parseBody()
   const grantType = body['grant_type'] as string
