@@ -3,7 +3,6 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
 export interface Env {
-  SESSION_KV: KVNamespace
   AI_GATEWAY: Fetcher
   BRAIN_WRITE: Fetcher
   MCP_SERVER: Fetcher
@@ -12,7 +11,6 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>()
 
-// CORS — all known frontend origins
 app.use('*', cors({
   origin: [
     'https://chefos-six.vercel.app',
