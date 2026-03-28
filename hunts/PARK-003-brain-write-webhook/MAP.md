@@ -1,5 +1,5 @@
 # Hunt: PARK-003 — Brain Write Webhook
-Goal: A webhook endpoint at thechefos.app/api/brain/push that accepts a brain node payload and commits it to SuperClaude/brain/ via GitHub API. No desktop. No token management. Any app can push a brain node.
+Goal: A webhook endpoint at api.thechefos.app/brain/push that accepts a brain node payload and commits it to SuperClaude/brain/ via GitHub API. No desktop. No token management. Any app can push a brain node.
 Repo: AetherCreator/thechefos-workers
 Branch: feature/park-workers
 
