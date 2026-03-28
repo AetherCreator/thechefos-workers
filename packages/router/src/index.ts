@@ -19,6 +19,7 @@ app.use('*', cors({
     'https://superconci.vercel.app',
     'https://morewords.vercel.app',
     'https://thechefos.app',
+    'https://api.thechefos.app',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product'],
