@@ -1,0 +1,7 @@
+name = "thechefos-oauth-server"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "e9dfcffc9e094365aec142267cb39a1e"
