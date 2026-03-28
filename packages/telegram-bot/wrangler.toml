@@ -1,0 +1,19 @@
+name = "thechefos-telegram-bot"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+
+[ai]
+binding = "AI"
+
+[triggers]
+crons = ["0 * * * *"]
+
+# Secrets (configured via `wrangler secret put`):
+# TELEGRAM_BOT_TOKEN — Telegram Bot API token
+# TELEGRAM_CHAT_ID — Tyler's chat ID (6091970994)
+# BRAIN_WEBHOOK_SECRET — must match packages/brain-write secret
+# GITHUB_TOKEN — for GitHub API reads
+# STRIPE_API_KEY — Stripe secret key for subscription checks
+# VERCEL_TOKEN — Vercel API token for deployment logs
+# VERCEL_PROJECT_ID — Vercel project ID to monitor
+# LINEAR_API_KEY — Linear API key for issue queries
