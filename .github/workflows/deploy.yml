@@ -23,12 +23,12 @@ jobs:
         working-directory: packages/ai-gateway
         run: npx wrangler deploy
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: cc231edbff18405233612d7afb657f1f
+          CLOUDFLARE_API_TOKEN: cfut_Gnov3IipBsMPo6pePBm1giLhnTS1xuH6XZJ0Iqdgd3e63b83
 
       - name: Deploy router
         working-directory: packages/router
         run: npx wrangler deploy
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: cc231edbff18405233612d7afb657f1f
+          CLOUDFLARE_API_TOKEN: cfut_Gnov3IipBsMPo6pePBm1giLhnTS1xuH6XZJ0Iqdgd3e63b83
