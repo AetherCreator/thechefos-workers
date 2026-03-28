@@ -9,6 +9,10 @@ binding = "AI"
 binding = "BRAIN_WRITE"
 service = "thechefos-brain-write"
 
+[[services]]
+binding = "BRAIN_SEARCH"
+service = "thechefos-brain-search"
+
 [triggers]
 crons = ["0 * * * *"]
 

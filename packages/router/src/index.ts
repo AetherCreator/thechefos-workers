@@ -4,6 +4,7 @@ import { cors } from 'hono/cors'
 
 export interface Env {
   AI_GATEWAY: Fetcher
+  BRAIN_SEARCH: Fetcher
   BRAIN_WRITE: Fetcher
   MCP_SERVER: Fetcher
   TELEGRAM_BOT: Fetcher
@@ -22,6 +23,10 @@ app.use('*', cors({
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret'],
 }))
+
+// Brain semantic search (must be before brain write catch-all)
+app.all('/api/brain/search', (c) => c.env.BRAIN_SEARCH.fetch(c.req.raw))
+app.all('/api/brain/index', (c) => c.env.BRAIN_SEARCH.fetch(c.req.raw))
 
 // Brain write webhook
 app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
@@ -42,7 +47,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/api/brain/search', '/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app

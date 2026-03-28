@@ -8,6 +8,8 @@
     "deploy:brain-write": "cd packages/brain-write && wrangler deploy",
     "dry-run:router": "cd packages/router && wrangler deploy --dry-run",
     "dry-run:gateway": "cd packages/ai-gateway && wrangler deploy --dry-run",
-    "dry-run:brain-write": "cd packages/brain-write && wrangler deploy --dry-run"
+    "dry-run:brain-write": "cd packages/brain-write && wrangler deploy --dry-run",
+    "deploy:brain-search": "cd packages/brain-search && wrangler deploy",
+    "dry-run:brain-search": "cd packages/brain-search && wrangler deploy --dry-run"
   }
 }

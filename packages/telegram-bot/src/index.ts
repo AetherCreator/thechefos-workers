@@ -12,6 +12,7 @@ export interface Env {
   VERCEL_PROJECT_ID: string
   LINEAR_API_KEY: string
   BRAIN_WRITE: Fetcher
+  BRAIN_SEARCH: Fetcher
 }
 
 // Command → brain path mapping
@@ -75,6 +76,10 @@ app.post('/api/telegram', async (c) => {
       }
       if (message.text === '/help' || message.text === '/start') {
         await handleHelp(c.env.TELEGRAM_BOT_TOKEN, chatId)
+        return c.json({ ok: true })
+      }
+      if (message.text.startsWith('/search')) {
+        await handleSearch(c.env, chatId, message.text)
         return c.json({ ok: true })
       }
 
@@ -193,6 +198,47 @@ async function handlePhoto(
   await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, `✅ Captured: ${content.slice(0, 50)}`)
 }
 
+async function handleSearch(env: Env, chatId: number, text: string): Promise<void> {
+  const query = text.replace(/^\/search\s*/, '').trim()
+  if (!query) {
+    await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, 'Usage: /search [query]\nExample: /search altitude baking')
+    return
+  }
+
+  const resp = await env.BRAIN_SEARCH.fetch('https://thechefos-brain-search.workers.dev/api/brain/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, limit: 3 }),
+  })
+
+  if (!resp.ok) {
+    await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, `Search failed (${resp.status})`)
+    return
+  }
+
+  const data = (await resp.json()) as {
+    query: string
+    results: Array<{ path: string; score: number; preview: string; githubUrl: string }>
+  }
+
+  if (!data.results || data.results.length === 0) {
+    await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, `No results for "${query}"`)
+    return
+  }
+
+  const lines = [`Top ${data.results.length} results for "${query}":\n`]
+
+  data.results.forEach((r, i) => {
+    const filename = r.path.split('/').pop() || r.path
+    const preview = r.preview.slice(0, 120).replace(/\n/g, ' ')
+    lines.push(`${i + 1}. ${filename} (score: ${r.score})`)
+    lines.push(`   "${preview}..."`)
+    lines.push('')
+  })
+
+  await sendTelegram(env.TELEGRAM_BOT_TOKEN, chatId, lines.join('\n'))
+}
+
 async function handleStatus(env: Env, chatId: number): Promise<void> {
   const resp = await fetch(
     'https://api.github.com/repos/AetherCreator/SuperClaude/contents/brain/ACTIVE-STATE.md',
@@ -226,6 +272,9 @@ async function handleHelp(token: string, chatId: number): Promise<void> {
     '/bake [text] → chef/professional',
     '/coci [text] → family',
     '/money [text] → finance',
+    '',
+    '*Search:*',
+    '/search [query] → semantic brain search',
     '',
     '*Other:*',
     '🎤 Voice message → auto-transcribed & captured',
