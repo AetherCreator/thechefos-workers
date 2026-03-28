@@ -4,6 +4,7 @@ import { cors } from 'hono/cors'
 
 export interface Env {
   AI_GATEWAY: Fetcher
+  BRAIN_SEARCH: Fetcher
   BRAIN_WRITE: Fetcher
   MCP_SERVER: Fetcher
   OAUTH_SERVER: Fetcher
@@ -19,6 +20,8 @@ app.use('*', cors({
     'https://morewords.vercel.app',
     'https://thechefos.app',
     'https://api.thechefos.app',
+    'https://claude.ai',
+    'https://www.claude.ai',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret'],
