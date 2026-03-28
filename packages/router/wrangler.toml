@@ -2,9 +2,8 @@ name = "thechefos-router"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
 
-[[kv_namespaces]]
-binding = "SESSION_KV"
-id = "e9dfcffc9e094365aec142267cb39a1e"
+# SESSION_KV removed — not needed until ChefOS auth is live
+# Add back: [[kv_namespaces]] binding = "SESSION_KV" id = "e9dfcffc9e094365aec142267cb39a1e"
 
 [[services]]
 binding = "AI_GATEWAY"
