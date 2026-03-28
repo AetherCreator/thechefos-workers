@@ -37,50 +37,76 @@ app.post('/api/brain/index', async (c) => {
   const headers = githubHeaders(c.env.GITHUB_TOKEN)
   const errors: string[] = []
 
+  // Paginated — run multiple times to index all nodes
+  // ?offset=0&limit=20 (default), increment offset each run
+  const offset = Number(c.req.query('offset') ?? 0)
+  const pageSize = Math.min(Number(c.req.query('limit') ?? BATCH_SIZE), BATCH_SIZE)
+
   try {
-    // Recursively fetch all markdown files from brain/
-    const files = await fetchBrainFiles(headers)
+    // 1 subrequest: get full tree
+    const treeResp = await fetch(
+      `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/git/trees/main?recursive=1`,
+      { headers }
+    )
+    const tree = await treeResp.json() as { tree: { path: string; type: string }[] }
+    const allPaths = tree.tree
+      .filter((f) => f.path.startsWith('brain/') && f.path.endsWith('.md') && f.type === 'blob')
+      .map((f) => f.path)
 
-    if (files.length === 0) {
-      return c.json({ indexed: 0, errors: ['No brain files found'] })
+    const total = allPaths.length
+    const page = allPaths.slice(offset, offset + pageSize)
+
+    if (page.length === 0) {
+      return c.json({ indexed: 0, total, offset, done: true, message: 'All nodes indexed ✅' })
     }
 
-    let indexed = 0
-
-    // Process in batches of BATCH_SIZE
-    for (let i = 0; i < files.length; i += BATCH_SIZE) {
-      const batch = files.slice(i, i + BATCH_SIZE)
-
-      // Generate embeddings for the batch
-      const texts = batch.map((f) => stripFrontmatter(f.content))
-      const embeddings = await c.env.AI.run(EMBEDDING_MODEL, { text: texts }) as { data: number[][] }
-
-      // Build vectors for upsert
-      const vectors: VectorizeVector[] = batch.map((file, idx) => ({
-        id: pathToVectorId(file.path),
-        values: embeddings.data[idx],
-        metadata: {
-          path: file.path,
-          domain: domainFromPath(file.path),
-          preview: stripFrontmatter(file.content).slice(0, 200),
-        },
-      }))
-
+    // Fetch file contents (pageSize subrequests)
+    const files: BrainFile[] = []
+    for (const path of page) {
       try {
-        await c.env.VECTORIZE.upsert(vectors)
-        indexed += batch.length
-      } catch (err) {
-        errors.push(`Batch ${i / BATCH_SIZE}: ${String(err)}`)
-      }
+        const r = await fetch(
+          `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`,
+          { headers: { ...headers, Accept: 'application/vnd.github.v3.raw' } }
+        )
+        if (r.ok) files.push({ path, content: await r.text() })
+      } catch (_) { errors.push(`fetch:${path}`) }
     }
 
-    return c.json({ indexed, total: files.length, errors })
+    // Embed + upsert
+    const texts = files.map((f) => stripFrontmatter(f.content).slice(0, 1000))
+    const embeddings = await c.env.AI.run(EMBEDDING_MODEL, { text: texts }) as { data: number[][] }
+
+    const vectors: VectorizeVector[] = files.map((file, idx) => ({
+      id: pathToVectorId(file.path),
+      values: embeddings.data[idx],
+      metadata: {
+        path: file.path,
+        domain: domainFromPath(file.path),
+        preview: stripFrontmatter(file.content).slice(0, 200),
+      },
+    }))
+
+    await c.env.VECTORIZE.upsert(vectors)
+
+    const nextOffset = offset + pageSize
+    const done = nextOffset >= total
+
+    return c.json({
+      indexed: files.length,
+      total,
+      offset,
+      nextOffset: done ? null : nextOffset,
+      done,
+      errors,
+      message: done
+        ? 'All nodes indexed! ✅'
+        : `Run next: POST /api/brain/index?offset=${nextOffset}`,
+    })
   } catch (err) {
     return c.json({ error: 'Indexing failed', details: String(err) }, 500)
   }
 })
 
-// --- Clue 3: Search endpoint ---
 app.post('/api/brain/search', async (c) => {
   const body = await c.req.json<{ query: string; limit?: number }>()
   const query = body.query?.trim()
