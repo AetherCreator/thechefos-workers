@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - claude/deploy-cloudflare-workers-HdPbf
+      - main
 
 env:
-  CLOUDFLARE_ACCOUNT_ID: cc231edbff18405233612d7afb657f1f
-  CLOUDFLARE_API_TOKEN: cfut_Gnov3IipBsMPo6pePBm1giLhnTS1xuH6XZJ0Iqdgd3e63b83
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
 
 jobs:
   deploy:
@@ -23,11 +23,11 @@ jobs:
       - name: Install all workspace dependencies
         run: npm install
 
-      - name: Deploy router
-        run: npx wrangler deploy
-        working-directory: packages/router
-
       - name: Deploy ai-gateway
         run: npx wrangler deploy
         working-directory: packages/ai-gateway
         continue-on-error: true
+
+      - name: Deploy router
+        run: npx wrangler deploy
+        working-directory: packages/router
