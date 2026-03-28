@@ -23,20 +23,7 @@ app.get('/.well-known/oauth-authorization-server', (c) => {
   })
 })
 
-// Also handle when accessed via /oauth prefix (router passes full path)
-app.get('/oauth/.well-known/oauth-authorization-server', (c) => {
-  return c.json({
-    issuer: ISSUER,
-    authorization_endpoint: `${ISSUER}/oauth/authorize`,
-    token_endpoint: `${ISSUER}/oauth/token`,
-    response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code'],
-    code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['none'],
-  })
-})
-
-// GET /authorize — approval page (handles both /authorize and /oauth/authorize)
+// GET /authorize — approval page
 const handleGetAuthorize = (c: any) => {
   const clientId = c.req.query('client_id')
   const redirectUri = c.req.query('redirect_uri')
@@ -87,7 +74,6 @@ const handleGetAuthorize = (c: any) => {
 }
 
 app.get('/authorize', handleGetAuthorize)
-app.get('/oauth/authorize', handleGetAuthorize)
 
 // POST /authorize — generate auth code, redirect
 const handlePostAuthorize = async (c: any) => {
@@ -127,7 +113,6 @@ const handlePostAuthorize = async (c: any) => {
 }
 
 app.post('/authorize', handlePostAuthorize)
-app.post('/oauth/authorize', handlePostAuthorize)
 
 // POST /token — exchange code for access token
 const handlePostToken = async (c: any) => {
@@ -201,7 +186,6 @@ const handlePostToken = async (c: any) => {
 }
 
 app.post('/token', handlePostToken)
-app.post('/oauth/token', handlePostToken)
 
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-oauth-server' }))
 
