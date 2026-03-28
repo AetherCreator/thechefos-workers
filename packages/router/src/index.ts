@@ -9,6 +9,8 @@ export interface Env {
   MOREWORDS: Fetcher
   AI_GATEWAY: Fetcher
   BRAIN_WRITE: Fetcher
+  MCP_SERVER: Fetcher
+  TELEGRAM_BOT: Fetcher
 }
 
 const app = new Hono<{ Bindings: Env }>()
@@ -23,7 +25,7 @@ app.use('*', cors({
     'https://api.thechefos.app',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret', 'x-mcp-token'],
 }))
 
 // Auth middleware — ChefOS routes only
@@ -48,13 +50,25 @@ app.all('/api/chefos/*', (c) => c.env.CHEFOS.fetch(c.req.raw))
 app.all('/api/conci/*',  (c) => c.env.SUPERCONCI.fetch(c.req.raw))
 app.all('/api/words/*',  (c) => c.env.MOREWORDS.fetch(c.req.raw))
 
-// AI Gateway passthrough (router receives /ai/* and forwards)
-app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
-
-// Brain Write — webhook for pushing brain nodes
+// Brain write webhook
 app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
 
+// MCP context server
+app.all('/api/mcp', (c) => c.env.MCP_SERVER.fetch(c.req.raw))
+app.all('/api/mcp/*', (c) => c.env.MCP_SERVER.fetch(c.req.raw))
+
+// Lamora — Telegram bot
+app.all('/api/telegram', (c) => c.env.TELEGRAM_BOT.fetch(c.req.raw))
+app.all('/api/telegram/*', (c) => c.env.TELEGRAM_BOT.fetch(c.req.raw))
+
+// AI Gateway passthrough
+app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
+
 // Health check
-app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-router' }))
+app.get('/health', (c) => c.json({
+  status: 'ok',
+  worker: 'thechefos-router',
+  routes: ['/api/chefos', '/api/conci', '/api/words', '/api/brain', '/api/mcp', '/api/telegram', '/ai']
+}))
 
 export default app
