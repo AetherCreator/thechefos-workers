@@ -44,7 +44,6 @@ jobs:
   deploy-brain-write:
     name: Deploy Brain Write
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('packages/brain-write/wrangler.toml') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,7 +61,6 @@ jobs:
   deploy-mcp-server:
     name: Deploy MCP Server
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('packages/mcp-server/wrangler.toml') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -78,9 +76,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
   deploy-telegram-bot:
-    name: Deploy Lamora (Telegram Bot)
+    name: Deploy Lamora
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('packages/telegram-bot/wrangler.toml') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
