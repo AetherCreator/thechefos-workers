@@ -6,6 +6,11 @@ export interface Env {
   BRAIN_WEBHOOK_SECRET: string
   GITHUB_TOKEN: string
   AI: Ai
+  // Alert service secrets (for cron)
+  STRIPE_API_KEY: string
+  VERCEL_TOKEN: string
+  VERCEL_PROJECT_ID: string
+  LINEAR_API_KEY: string
 }
 
 // Command → brain path mapping
@@ -322,4 +327,157 @@ interface TelegramPhoto {
   height: number
 }
 
-export default app
+// --- Proactive Alert Cron ---
+
+async function handleScheduled(env: Env): Promise<void> {
+  const alerts: string[] = []
+
+  // Check Stripe for past_due/unpaid subscriptions
+  if (env.STRIPE_API_KEY) {
+    const stripeAlerts = await checkStripe(env.STRIPE_API_KEY)
+    alerts.push(...stripeAlerts)
+  }
+
+  // Check Vercel for 5xx errors
+  if (env.VERCEL_TOKEN && env.VERCEL_PROJECT_ID) {
+    const vercelAlerts = await checkVercel(env.VERCEL_TOKEN, env.VERCEL_PROJECT_ID)
+    alerts.push(...vercelAlerts)
+  }
+
+  // Check Linear for stale urgent issues
+  if (env.LINEAR_API_KEY) {
+    const linearAlerts = await checkLinear(env.LINEAR_API_KEY)
+    alerts.push(...linearAlerts)
+  }
+
+  // Send alerts if any, silent if all clear
+  if (alerts.length > 0) {
+    const message = alerts.join('\n\n')
+    await sendTelegram(env.TELEGRAM_BOT_TOKEN, Number(env.TELEGRAM_CHAT_ID), message)
+  }
+}
+
+async function checkStripe(apiKey: string): Promise<string[]> {
+  const alerts: string[] = []
+
+  const resp = await fetch(
+    'https://api.stripe.com/v1/subscriptions?status=past_due&limit=10',
+    { headers: { Authorization: `Bearer ${apiKey}` } }
+  )
+
+  if (!resp.ok) return alerts
+
+  const data = (await resp.json()) as {
+    data: Array<{
+      status: string
+      customer: string
+      items: { data: Array<{ price: { unit_amount: number; recurring: { interval: string } }; plan?: { nickname: string } }> }
+    }>
+  }
+
+  for (const sub of data.data) {
+    const item = sub.items.data[0]
+    const amount = item?.price?.unit_amount ? `$${(item.price.unit_amount / 100).toFixed(0)}/mo` : 'unknown'
+    const plan = item?.plan?.nickname || 'subscription'
+    alerts.push(`🚨 STRIPE ALERT\nPast due: ${sub.customer}\nPlan: ${plan} ${amount}\nAction: Check Stripe dashboard`)
+  }
+
+  // Also check unpaid
+  const unpaidResp = await fetch(
+    'https://api.stripe.com/v1/subscriptions?status=unpaid&limit=10',
+    { headers: { Authorization: `Bearer ${apiKey}` } }
+  )
+
+  if (unpaidResp.ok) {
+    const unpaidData = (await unpaidResp.json()) as { data: Array<{ customer: string }> }
+    for (const sub of unpaidData.data) {
+      alerts.push(`🚨 STRIPE ALERT\nUnpaid: ${sub.customer}\nAction: Check Stripe dashboard`)
+    }
+  }
+
+  return alerts
+}
+
+async function checkVercel(token: string, projectId: string): Promise<string[]> {
+  const alerts: string[] = []
+  const since = Date.now() - 60 * 60 * 1000 // last hour
+
+  const resp = await fetch(
+    `https://api.vercel.com/v1/projects/${projectId}/deployments?limit=5&state=READY&since=${since}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+
+  if (!resp.ok) return alerts
+
+  // Check runtime logs for 5xx errors
+  const logsResp = await fetch(
+    `https://api.vercel.com/v2/projects/${projectId}/logs?since=${since}&type=error&limit=50`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+
+  if (!logsResp.ok) return alerts
+
+  const logsData = (await logsResp.json()) as {
+    data?: Array<{ message: string; statusCode?: number; proxy?: { statusCode?: number } }>
+  }
+
+  const errors = (logsData.data || []).filter(
+    (log) => (log.statusCode && log.statusCode >= 500) || (log.proxy?.statusCode && log.proxy.statusCode >= 500)
+  )
+
+  if (errors.length > 0) {
+    const topError = errors[0]?.message?.slice(0, 100) || 'Unknown error'
+    alerts.push(`⚠️ VERCEL ERROR\n${projectId}: ${errors.length} errors in last hour\nTop error: ${topError}\nAction: Check Vercel logs`)
+  }
+
+  return alerts
+}
+
+async function checkLinear(apiKey: string): Promise<string[]> {
+  const alerts: string[] = []
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+  const query = `{
+    issues(filter: {
+      priority: { eq: 1 },
+      updatedAt: { lt: "${sevenDaysAgo}" },
+      state: { type: { nin: ["completed", "canceled"] } }
+    }, first: 10) {
+      nodes {
+        identifier
+        title
+        updatedAt
+      }
+    }
+  }`
+
+  const resp = await fetch('https://api.linear.app/graphql', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: apiKey,
+    },
+    body: JSON.stringify({ query }),
+  })
+
+  if (!resp.ok) return alerts
+
+  const data = (await resp.json()) as {
+    data?: { issues?: { nodes: Array<{ identifier: string; title: string; updatedAt: string }> } }
+  }
+
+  const issues = data.data?.issues?.nodes || []
+  for (const issue of issues) {
+    const daysStale = Math.floor((Date.now() - new Date(issue.updatedAt).getTime()) / (1000 * 60 * 60 * 24))
+    alerts.push(`📋 LINEAR FLAG\n${issue.identifier} urgent for ${daysStale} days\n${issue.title}\nAction: Review and update`)
+  }
+
+  return alerts
+}
+
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(handleScheduled(env))
+  },
+}
