@@ -1,0 +1,8 @@
+name = "thechefos-mcp-server"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+
+[vars]
+GITHUB_OWNER = "AetherCreator"
+GITHUB_REPO = "SuperClaude"
+GITHUB_BRANCH = "main"

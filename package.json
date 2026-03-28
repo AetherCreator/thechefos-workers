@@ -6,6 +6,8 @@
     "deploy:router": "cd packages/router && wrangler deploy",
     "deploy:gateway": "cd packages/ai-gateway && wrangler deploy",
     "dry-run:router": "cd packages/router && wrangler deploy --dry-run",
-    "dry-run:gateway": "cd packages/ai-gateway && wrangler deploy --dry-run"
+    "dry-run:gateway": "cd packages/ai-gateway && wrangler deploy --dry-run",
+    "deploy:mcp": "cd packages/mcp-server && wrangler deploy",
+    "dry-run:mcp": "cd packages/mcp-server && wrangler deploy --dry-run"
   }
 }

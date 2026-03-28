@@ -21,3 +21,7 @@ service = "morewords-worker"
 [[services]]
 binding = "AI_GATEWAY"
 service = "thechefos-ai-gateway"
+
+[[services]]
+binding = "MCP_SERVER"
+service = "thechefos-mcp-server"

@@ -8,6 +8,7 @@ export interface Env {
   SUPERCONCI: Fetcher
   MOREWORDS: Fetcher
   AI_GATEWAY: Fetcher
+  MCP_SERVER: Fetcher
 }
 
 const app = new Hono<{ Bindings: Env }>()
@@ -49,6 +50,10 @@ app.all('/api/words/*',  (c) => c.env.MOREWORDS.fetch(c.req.raw))
 
 // AI Gateway passthrough (router receives /ai/* and forwards)
 app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
+
+// MCP Server passthrough (router receives /api/mcp and forwards)
+app.all('/api/mcp', (c) => c.env.MCP_SERVER.fetch(c.req.raw))
+app.all('/api/mcp/*', (c) => c.env.MCP_SERVER.fetch(c.req.raw))
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-router' }))
