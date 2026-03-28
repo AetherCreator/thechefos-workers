@@ -212,7 +212,7 @@ app.get('/.well-known/oauth-protected-resource', (c) => {
 
 app.use('*', async (c, next) => {
   const path = c.req.path
-  if (path === '/health' || path === '/.well-known/oauth-protected-resource') {
+  if (path === '/health' || path.includes('/.well-known/') || path.endsWith('/health')) {
     return next()
   }
 
