@@ -1,0 +1,11 @@
+{
+  "name": "thechefos-workers",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "deploy:router": "cd packages/router && wrangler deploy",
+    "deploy:gateway": "cd packages/ai-gateway && wrangler deploy",
+    "dry-run:router": "cd packages/router && wrangler deploy --dry-run",
+    "dry-run:gateway": "cd packages/ai-gateway && wrangler deploy --dry-run"
+  }
+}
