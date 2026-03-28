@@ -11,9 +11,9 @@ Fast, clever, gets in and out without being noticed. Captures what matters.
 - **Alerts:** Stripe failure, Vercel error, urgent Linear issue → Lamora messages Tyler. Notification on Watch. No computer. Ever.
 
 ## Bot credentials (stored as Worker secrets — never in code)
-- TELEGRAM_BOT_TOKEN — already provided, store via `wrangler secret put`
-- TELEGRAM_CHAT_ID — `6091970994` (Tyler's personal chat ID)
-- BRAIN_WEBHOOK_SECRET — must match the secret in packages/brain-write Worker
+- TELEGRAM_BOT_TOKEN — `8720879536:AAFCxpK9U_WNVGvJJfTkAcH2Y-ODIa2HL_0` (store via wrangler secret put, already set in Cloudflare dashboard)
+- TELEGRAM_CHAT_ID — `6091970994` ✅ confirmed
+- BRAIN_WEBHOOK_SECRET — `Lies-of-Lamora-2026` ✅ confirmed (matches brain-write Worker)
 - GITHUB_TOKEN — stored in Worker, used for any direct GitHub reads needed
 
 ## Architecture
@@ -88,11 +88,17 @@ Action: Schedule domain interview
 
 ## Worker Secrets Required
 ```
-TELEGRAM_BOT_TOKEN = [stored in Cloudflare — do not expose]
-TELEGRAM_CHAT_ID = 6091970994
-BRAIN_WEBHOOK_SECRET = [must match packages/brain-write Worker secret]
-GITHUB_TOKEN = [stored in Cloudflare — do not expose]
+TELEGRAM_BOT_TOKEN = stored in Cloudflare ✅
+TELEGRAM_CHAT_ID = 6091970994 ✅
+BRAIN_WEBHOOK_SECRET = Lies-of-Lamora-2026 ✅
+GITHUB_TOKEN = stored in Cloudflare ✅
 ```
+
+## Clue 1 Status
+✅ COMPLETE — packages/telegram-bot/ scaffolded, webhook Worker built, router integration wired.
+Branch: claude/park-workers-telegram-bot-VgisJ
+Note: Lamora won't respond yet — api.thechefos.app domain not wired + Worker not deployed to Cloudflare.
+Deploy is required before registering the Telegram webhook.
 
 ## Success State (TREASURE)
 6am. Tyler is in the kitchen. Croissants are proofing.
