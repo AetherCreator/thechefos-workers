@@ -6,8 +6,12 @@ on:
     branches:
       - claude/deploy-cloudflare-workers-HdPbf
 
+env:
+  CLOUDFLARE_ACCOUNT_ID: cc231edbff18405233612d7afb657f1f
+  CLOUDFLARE_API_TOKEN: cfut_Gnov3IipBsMPo6pePBm1giLhnTS1xuH6XZJ0Iqdgd3e63b83
+
 jobs:
-  deploy-ai-gateway:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,34 +20,13 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies
+      - name: Install all workspace dependencies
         run: npm install
-        working-directory: packages/ai-gateway
 
       - name: Deploy ai-gateway
-        working-directory: packages/ai-gateway
         run: npx wrangler deploy
-        env:
-          CLOUDFLARE_ACCOUNT_ID: cc231edbff18405233612d7afb657f1f
-          CLOUDFLARE_API_TOKEN: cfut_Gnov3IipBsMPo6pePBm1giLhnTS1xuH6XZJ0Iqdgd3e63b83
-
-  deploy-router:
-    runs-on: ubuntu-latest
-    needs: deploy-ai-gateway
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm install
-        working-directory: packages/router
+        working-directory: packages/ai-gateway
 
       - name: Deploy router
-        working-directory: packages/router
         run: npx wrangler deploy
-        env:
-          CLOUDFLARE_ACCOUNT_ID: cc231edbff18405233612d7afb657f1f
-          CLOUDFLARE_API_TOKEN: cfut_Gnov3IipBsMPo6pePBm1giLhnTS1xuH6XZJ0Iqdgd3e63b83
+        working-directory: packages/router
