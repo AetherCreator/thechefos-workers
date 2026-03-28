@@ -8,6 +8,7 @@ export interface Env {
   SUPERCONCI: Fetcher
   MOREWORDS: Fetcher
   AI_GATEWAY: Fetcher
+  TELEGRAM_BOT: Fetcher
 }
 
 const app = new Hono<{ Bindings: Env }>()
@@ -46,6 +47,9 @@ app.use('/api/chefos/*', async (c, next) => {
 app.all('/api/chefos/*', (c) => c.env.CHEFOS.fetch(c.req.raw))
 app.all('/api/conci/*',  (c) => c.env.SUPERCONCI.fetch(c.req.raw))
 app.all('/api/words/*',  (c) => c.env.MOREWORDS.fetch(c.req.raw))
+
+// Telegram bot webhook
+app.all('/api/telegram', (c) => c.env.TELEGRAM_BOT.fetch(c.req.raw))
 
 // AI Gateway passthrough (router receives /ai/* and forwards)
 app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
