@@ -23,10 +23,11 @@ jobs:
       - name: Install all workspace dependencies
         run: npm install
 
-      - name: Deploy ai-gateway
-        run: npx wrangler deploy
-        working-directory: packages/ai-gateway
-
       - name: Deploy router
         run: npx wrangler deploy
         working-directory: packages/router
+
+      - name: Deploy ai-gateway
+        run: npx wrangler deploy
+        working-directory: packages/ai-gateway
+        continue-on-error: true
