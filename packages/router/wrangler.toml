@@ -4,19 +4,7 @@ compatibility_date = "2026-03-01"
 
 [[kv_namespaces]]
 binding = "SESSION_KV"
-id = "PLACEHOLDER_KV_ID"
-
-[[services]]
-binding = "CHEFOS"
-service = "chefos-worker"
-
-[[services]]
-binding = "SUPERCONCI"
-service = "superconci-worker"
-
-[[services]]
-binding = "MOREWORDS"
-service = "morewords-worker"
+id = "e9dfcffc9e094365aec142267cb39a1e"
 
 [[services]]
 binding = "AI_GATEWAY"

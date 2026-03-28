@@ -4,9 +4,7 @@ import { cors } from 'hono/cors'
 
 export interface Env {
   SESSION_KV: KVNamespace
-  CHEFOS: Fetcher
-  SUPERCONCI: Fetcher
-  MOREWORDS: Fetcher
+  // CHEFOS, SUPERCONCI, MOREWORDS bindings will be added when those workers are deployed
   AI_GATEWAY: Fetcher
 }
 
@@ -24,7 +22,7 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product'],
 }))
 
-// Auth middleware — ChefOS routes only
+// Auth middleware — ChefOS routes only (product routes will be added when those workers are deployed)
 app.use('/api/chefos/*', async (c, next) => {
   const authHeader = c.req.header('Authorization')
   const token = authHeader?.replace('Bearer ', '')
@@ -40,11 +38,6 @@ app.use('/api/chefos/*', async (c, next) => {
 
   await next()
 })
-
-// Product routes via Service Bindings
-app.all('/api/chefos/*', (c) => c.env.CHEFOS.fetch(c.req.raw))
-app.all('/api/conci/*',  (c) => c.env.SUPERCONCI.fetch(c.req.raw))
-app.all('/api/words/*',  (c) => c.env.MOREWORDS.fetch(c.req.raw))
 
 // AI Gateway passthrough (router receives /ai/* and forwards)
 app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
