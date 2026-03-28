@@ -5,7 +5,9 @@
   "scripts": {
     "deploy:router": "cd packages/router && wrangler deploy",
     "deploy:gateway": "cd packages/ai-gateway && wrangler deploy",
+    "deploy:brain-write": "cd packages/brain-write && wrangler deploy",
     "dry-run:router": "cd packages/router && wrangler deploy --dry-run",
-    "dry-run:gateway": "cd packages/ai-gateway && wrangler deploy --dry-run"
+    "dry-run:gateway": "cd packages/ai-gateway && wrangler deploy --dry-run",
+    "dry-run:brain-write": "cd packages/brain-write && wrangler deploy --dry-run"
   }
 }

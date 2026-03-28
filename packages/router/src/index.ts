@@ -8,6 +8,7 @@ export interface Env {
   SUPERCONCI: Fetcher
   MOREWORDS: Fetcher
   AI_GATEWAY: Fetcher
+  BRAIN_WRITE: Fetcher
 }
 
 const app = new Hono<{ Bindings: Env }>()
@@ -22,7 +23,7 @@ app.use('*', cors({
     'https://api.thechefos.app',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret'],
 }))
 
 // Auth middleware — ChefOS routes only
@@ -49,6 +50,9 @@ app.all('/api/words/*',  (c) => c.env.MOREWORDS.fetch(c.req.raw))
 
 // AI Gateway passthrough (router receives /ai/* and forwards)
 app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
+
+// Brain Write — webhook for pushing brain nodes
+app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-router' }))
