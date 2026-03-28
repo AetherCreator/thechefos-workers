@@ -1,3 +1,6 @@
 name = "thechefos-ai-gateway"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
+
+[vars]
+# CF_ACCOUNT_ID and CF_API_TOKEN set via wrangler secret put
