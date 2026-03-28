@@ -1,0 +1,7 @@
+name = "thechefos-brain-write"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+
+# GITHUB_TOKEN and WEBHOOK_SECRET set via:
+#   wrangler secret put GITHUB_TOKEN
+#   wrangler secret put WEBHOOK_SECRET
