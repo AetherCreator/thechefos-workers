@@ -11,6 +11,7 @@ export interface Env {
   VERCEL_TOKEN: string
   VERCEL_PROJECT_ID: string
   LINEAR_API_KEY: string
+  BRAIN_WRITE: Fetcher
 }
 
 // Command → brain path mapping
@@ -250,7 +251,7 @@ async function pushToBrain(
   content: string,
   message: string
 ): Promise<void> {
-  const resp = await fetch('https://api.thechefos.app/api/brain/push', {
+  const resp = await env.BRAIN_WRITE.fetch('https://thechefos-brain-write.workers.dev/api/brain/push', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
