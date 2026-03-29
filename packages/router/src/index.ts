@@ -39,6 +39,9 @@ app.use('*', cors({
 app.all('/oauth/*', (c) => forward(c.req.raw, c.env.OAUTH_SERVER, '/oauth'))
 app.get('/.well-known/oauth-authorization-server', (c) => c.env.OAUTH_SERVER.fetch(c.req.raw))
 
+// Brain dashboard — aggregated view (before graph catch-all)
+app.get('/api/brain/dashboard', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain'))
+
 // Brain graph — structured D1 queries (before brain-write catch-all)
 app.all('/api/brain/graph/*', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
 
@@ -61,7 +64,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/graph', '/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/graph', '/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app

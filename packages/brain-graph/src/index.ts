@@ -198,6 +198,105 @@ app.route('/patterns', patterns);
 // OPS status routes
 app.route('/ops', ops);
 
+// GET /dashboard — aggregated dashboard data (single call)
+app.get('/dashboard', async (c) => {
+  const db = c.env.BRAIN_DB;
+  const kv = c.env.OPS_KV;
+
+  try {
+    // Parallel: stats, recent nodes, top connected, patterns, KV reads
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const [
+      totalRes, domainRes, connRes, insightRatioRes,
+      recentNodes, topConnected, recentCountRes,
+      cycleData, sessionState,
+      allNodes, graduatedCount,
+    ] = await Promise.all([
+      db.prepare(STATS_QUERIES.totalNodes).first<{ total: number }>(),
+      db.prepare(STATS_QUERIES.byDomain).all<{ domain: string; count: number }>(),
+      db.prepare(STATS_QUERIES.totalConnections).first<{ total: number }>(),
+      db.prepare(STATS_QUERIES.insightRatio).first<{ ratio: number }>(),
+      db.prepare('SELECT id, title, domain, type, updated_at, connection_count, summary FROM brain_nodes ORDER BY updated_at DESC LIMIT 5').all<NodeRow>(),
+      db.prepare('SELECT id, title, domain, type, updated_at, connection_count, summary FROM brain_nodes ORDER BY connection_count DESC LIMIT 5').all<NodeRow>(),
+      db.prepare('SELECT COUNT(*) as count FROM brain_nodes WHERE updated_at >= ?').bind(sevenDaysAgo).first<{ count: number }>(),
+      kv.get('ops:current-cycle', 'json') as Promise<{ id: string; name: string; starts: string; ends: string; status: string; issues: { total: number; done: number; in_progress: number; todo: number }; next: { id: string; name: string; starts: string } } | null>,
+      kv.get('session:execution-state', 'json') as Promise<Record<string, unknown> | null>,
+      db.prepare("SELECT id, title, domain, tags FROM brain_nodes WHERE tags != '[]'").all<{ id: string; title: string; domain: string; tags: string }>(),
+      db.prepare("SELECT COUNT(*) as count FROM brain_patterns WHERE status = 'graduated'").first<{ count: number }>(),
+    ]);
+
+    // Domain distribution
+    const byDomain: Record<string, number> = {};
+    let leastCovered = '';
+    let leastCount = Infinity;
+    for (const row of domainRes.results) {
+      byDomain[row.domain] = row.count;
+      if (row.count < leastCount) {
+        leastCount = row.count;
+        leastCovered = row.domain;
+      }
+    }
+
+    // Lightweight pattern scan (tag clustering only, top 3)
+    const tagMap = new Map<string, { nodes: string[]; domains: Set<string> }>();
+    for (const node of allNodes.results) {
+      let tags: string[];
+      try { tags = JSON.parse(node.tags); } catch { continue; }
+      for (const tag of tags) {
+        const entry = tagMap.get(tag) ?? { nodes: [], domains: new Set() };
+        entry.nodes.push(node.id);
+        entry.domains.add(node.domain);
+        tagMap.set(tag, entry);
+      }
+    }
+    const candidates: { name: string; domains: string[]; score: number; node_count: number }[] = [];
+    for (const [tag, entry] of tagMap) {
+      if (entry.nodes.length >= 3 && entry.domains.size >= 2) {
+        candidates.push({
+          name: `${tag} (cross-domain)`,
+          domains: Array.from(entry.domains),
+          score: entry.nodes.length * entry.domains.size,
+          node_count: entry.nodes.length,
+        });
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+
+    // OPS cycle
+    const today = new Date();
+    let opsData = { cycle: '', name: '', completion_pct: 0, days_remaining: 0 };
+    if (cycleData) {
+      const endsDate = new Date(cycleData.ends + 'T23:59:59Z');
+      const daysRemaining = Math.max(0, Math.ceil((endsDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+      const completionPct = cycleData.issues.total > 0 ? Math.round((cycleData.issues.done / cycleData.issues.total) * 100) : 0;
+      opsData = { cycle: cycleData.id, name: cycleData.name, completion_pct: completionPct, days_remaining: daysRemaining };
+    }
+
+    return c.json({
+      vitals: {
+        total_nodes: totalRes?.total ?? 0,
+        by_domain: byDomain,
+        total_connections: connRes?.total ?? 0,
+        insight_ratio: Math.round((insightRatioRes?.ratio ?? 0) * 100) / 100,
+        least_covered: leastCovered,
+        nodes_last_7d: recentCountRes?.count ?? 0,
+      },
+      ops: opsData,
+      patterns: {
+        candidates: candidates.slice(0, 3),
+        graduated_count: graduatedCount?.count ?? 0,
+      },
+      session: sessionState ?? null,
+      recent_nodes: recentNodes.results,
+      top_connected: topConnected.results,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    return c.json({ error: 'Dashboard aggregation failed', details: String(e) }, 500);
+  }
+});
+
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'superclaude-brain-graph' }));
 
