@@ -207,6 +207,85 @@ app.post('/connect', async (c) => {
   }
 });
 
+// GET /dashboard — aggregated view for brain dashboard
+app.get('/dashboard', async (c) => {
+  try {
+    const db = c.env.BRAIN_DB;
+
+    // Run all queries in parallel
+    const [
+      totalResult,
+      domainResult,
+      connResult,
+      insightResult,
+      recentNodesResult,
+      topConnectedResult,
+      patternsResult,
+      recentCountResult,
+    ] = await Promise.all([
+      db.prepare('SELECT COUNT(*) as total FROM brain_nodes').first<{ total: number }>(),
+      db.prepare('SELECT domain, COUNT(*) as count FROM brain_nodes GROUP BY domain').all<{ domain: string; count: number }>(),
+      db.prepare('SELECT COUNT(*) as total FROM brain_connections').first<{ total: number }>(),
+      db.prepare('SELECT COUNT(*) as count FROM brain_nodes WHERE is_insight = 1').first<{ count: number }>(),
+      db.prepare('SELECT * FROM brain_nodes ORDER BY updated_at DESC LIMIT 5').all<NodeRow>(),
+      db.prepare('SELECT * FROM brain_nodes ORDER BY connection_count DESC LIMIT 5').all<NodeRow>(),
+      db.prepare("SELECT * FROM brain_patterns WHERE status = 'candidate' ORDER BY first_seen DESC LIMIT 3").all<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string; graduated_at: string | null }>(),
+      db.prepare("SELECT COUNT(*) as count FROM brain_nodes WHERE updated_at >= date('now', '-7 days')").first<{ count: number }>(),
+    ]);
+
+    const totalNodes = totalResult?.total || 0;
+    const totalConnections = connResult?.total || 0;
+    const insightCount = insightResult?.count || 0;
+
+    const byDomain: Record<string, number> = {};
+    let leastCovered = '';
+    let leastCount = Infinity;
+    for (const row of domainResult.results) {
+      byDomain[row.domain] = row.count;
+      if (row.count < leastCount) {
+        leastCount = row.count;
+        leastCovered = row.domain;
+      }
+    }
+
+    const graduatedCount = await db.prepare("SELECT COUNT(*) as count FROM brain_patterns WHERE status = 'graduated'").first<{ count: number }>();
+
+    return c.json({
+      vitals: {
+        total_nodes: totalNodes,
+        by_domain: byDomain,
+        total_connections: totalConnections,
+        insight_ratio: totalNodes > 0 ? Math.round((insightCount / totalNodes) * 100) / 100 : 0,
+        least_covered: leastCovered,
+        nodes_last_7d: recentCountResult?.count || 0,
+      },
+      ops: {
+        cycle: 'ops-01',
+        name: 'Brain Foundation Audit',
+        completion_pct: 67,
+        days_remaining: 2,
+      },
+      patterns: {
+        candidates: patternsResult.results.map((p) => ({
+          id: p.id,
+          name: p.name,
+          domains: JSON.parse(p.domains || '[]'),
+          node_ids: JSON.parse(p.node_ids || '[]'),
+          status: p.status,
+          first_seen: p.first_seen,
+        })),
+        graduated_count: graduatedCount?.count || 0,
+      },
+      session: null,
+      recent_nodes: recentNodesResult.results,
+      top_connected: topConnectedResult.results,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // Health check
 app.get('/health', (c) =>
   c.json({ status: 'ok', worker: 'superclaude-brain-graph' }),
