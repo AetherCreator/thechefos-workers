@@ -4,9 +4,12 @@ import { runMigrations } from './schema';
 import { migrateBrainToD1 } from './migrate';
 import { buildQuerySQL, buildGraphSQL, STATS_QUERIES } from './queries';
 import type { NodeRow, ConnectionRow } from './queries';
+import { patterns } from './patterns';
+import { ops } from './ops';
 
 export interface Env {
   BRAIN_DB: D1Database;
+  OPS_KV: KVNamespace;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -188,6 +191,12 @@ app.post('/connect', async (c) => {
     return c.json({ error: 'Failed to create connection', details: String(e) }, 500);
   }
 });
+
+// Pattern detection routes
+app.route('/patterns', patterns);
+
+// OPS status routes
+app.route('/ops', ops);
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'superclaude-brain-graph' }));
