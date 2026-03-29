@@ -17,7 +17,7 @@ jobs:
       - name: Deploy
         working-directory: packages/ai-gateway
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -34,7 +34,7 @@ jobs:
       - name: Deploy
         working-directory: packages/brain-graph
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -52,7 +52,7 @@ jobs:
       - name: Deploy
         working-directory: packages/router
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -69,7 +69,7 @@ jobs:
       - name: Deploy
         working-directory: packages/brain-write
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -86,7 +86,7 @@ jobs:
       - name: Deploy
         working-directory: packages/mcp-server
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -103,7 +103,7 @@ jobs:
       - name: Deploy
         working-directory: packages/telegram-bot
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npx wrangler deploy --keep-vars
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -118,7 +118,7 @@ jobs:
         with:
           node-version: '20'
       - name: Install root deps
-        run: npm install
+        run: npm install --legacy-peer-deps
       - name: Deploy
         working-directory: packages/brain-search
         run: npx wrangler deploy --keep-vars
@@ -135,7 +135,7 @@ jobs:
         with:
           node-version: '20'
       - name: Install root deps
-        run: npm install
+        run: npm install --legacy-peer-deps
       - name: Deploy
         working-directory: packages/oauth-server
         run: npx wrangler deploy --keep-vars
