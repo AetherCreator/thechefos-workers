@@ -7,6 +7,14 @@ binding = "AI_GATEWAY"
 service = "thechefos-ai-gateway"
 
 [[services]]
+binding = "BRAIN_GRAPH"
+service = "superclaude-brain-graph"
+
+[[services]]
+binding = "BRAIN_SEARCH"
+service = "thechefos-brain-search"
+
+[[services]]
 binding = "BRAIN_WRITE"
 service = "thechefos-brain-write"
 
