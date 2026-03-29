@@ -1,0 +1,81 @@
+# TheChefOS Workers — Claude Code Context
+Last updated: 2026-03-28
+
+## What This Is
+Cloudflare Workers monorepo powering the backend for ALL Tyler's products.
+Domain: api.thechefos.app (via Cloudflare custom domain on the router Worker)
+Owner: Tyler Vegetabile — iPhone-only workflow, Claude Max.
+
+## Deployed Workers (7 live as of 2026-03-28)
+| Worker | Package | Purpose |
+|--------|---------|---------|
+| thechefos-router | packages/router | Hono router — CORS, service binding dispatch |
+| thechefos-ai-gateway | packages/ai-gateway | Anthropic proxy via CF AI Gateway |
+| thechefos-brain-search | packages/brain-search | Vectorize semantic search (Workers AI embeddings) |
+| thechefos-brain-write | packages/brain-write | GitHub brain/ push + GRAPH-INDEX auto-update |
+| thechefos-mcp-server | packages/mcp-server | ClaudeFare MCP endpoint (McpAgent class) |
+| thechefos-oauth-server | packages/oauth-server | OAuth flow for MCP auth |
+| thechefos-telegram-bot | packages/telegram-bot | Telegram bot (Lamora persona) |
+
+## Data Stores
+- KV: thechefos-router-SESSION_KV (session tokens, feature flags)
+- Vectorize: superclaude-brain (768-dim cosine, brain/ semantic search)
+- D1: none yet (planned for structured brain graph queries)
+- R2: not enabled
+
+## Cloudflare Account
+- Account ID: cc231edbff18405233612d7afb657f1f
+- Workers subdomain: tveg-baking.workers.dev
+- set_active_account MUST be called before any Cloudflare operations
+
+## Router Dispatch Map
+```
+/oauth/*        → OAUTH_SERVER (service binding)
+/api/brain/*    → BRAIN_WRITE (service binding)
+/api/mcp*       → MCP_SERVER (service binding)
+/api/telegram*  → TELEGRAM_BOT (service binding)
+/api/claude     → AI_GATEWAY (service binding)
+/ai/*           → AI_GATEWAY (service binding)
+```
+
+CORS origins: chefos-six.vercel.app, superconci.vercel.app, morewords.vercel.app, thechefos.app, api.thechefos.app, claude.ai
+
+## Known Gaps
+- brain-search is NOT wired through router (standalone Worker, router sends /api/brain/* only to brain-write)
+- No product-specific workers yet (chefos-worker, superconci-worker)
+- MCP server rebuilt to McpAgent class but may need npm install + wrangler deploy
+- Router lacks /api/brain/index route for brain-search indexing endpoint
+
+## Architecture Rules
+1. All Workers use Hono framework
+2. Router passes c.req.raw to service bindings (full URL, not stripped)
+3. Downstream Workers receive full paths — use forward() helper to strip prefix
+4. Workers service bindings require bound Worker to be deployed FIRST
+5. Kid-safety: x-product header (superconci/morewords) → cf-aig-collect-log-payload: false
+6. GitHub Actions CF_API_TOKEN must include Workers KV Storage Edit scope
+
+## Code Rules
+- Complete files only, never fragments
+- TypeScript for all Workers
+- Environment types defined per Worker
+- Test with wrangler deploy --dry-run before pushing
+
+## Infrastructure Verification Rule
+State files are claims, not truth. Tools are truth.
+Before ANY infrastructure planning, run:
+1. Cloudflare:workers_list — deployed Workers
+2. Cloudflare:d1_databases_list — D1 databases
+3. Cloudflare:kv_namespaces_list — KV stores
+If tools and state files disagree, tools win.
+
+## Post-Session State Sync
+After deploying or modifying ANY Worker:
+- Update SuperClaude brain/00-session/ACTIVE-STATE.md
+- Update SuperClaude brain/OPS-BOARD.md
+- This is MANDATORY. The last deployment session skipped this and caused a 6-clue hunt to be designed for infrastructure that already existed.
+
+## Related Repos
+- SuperClaude (github.com/AetherCreator/SuperClaude) — skills, brain/, state files
+- ChefOS (github.com/AetherCreator/chefos) — React PWA frontend
+- SuperConci (github.com/AetherCreator/SuperConci) — Kids learning PWA
+- More (github.com/AetherCreator/more) — MoreWords vocab app
