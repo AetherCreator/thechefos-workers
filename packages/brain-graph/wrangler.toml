@@ -1,0 +1,8 @@
+name = "superclaude-brain-graph"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+
+[[d1_databases]]
+binding = "BRAIN_DB"
+database_name = "superclaude-brain"
+database_id = "c9f55aaf-ac80-4111-b78e-9339a2f8e377"

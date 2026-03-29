@@ -4,6 +4,7 @@ import { cors } from 'hono/cors'
 
 export interface Env {
   AI_GATEWAY: Fetcher
+  BRAIN_GRAPH: Fetcher
   BRAIN_SEARCH: Fetcher
   BRAIN_WRITE: Fetcher
   MCP_SERVER: Fetcher
@@ -31,14 +32,24 @@ app.use('*', cors({
     'https://www.claude.ai',
   ],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret', 'x-github-token'],
 }))
 
 // OAuth authorization server — strip /oauth so downstream sees /authorize, /token
 app.all('/oauth/*', (c) => forward(c.req.raw, c.env.OAUTH_SERVER, '/oauth'))
 app.get('/.well-known/oauth-authorization-server', (c) => c.env.OAUTH_SERVER.fetch(c.req.raw))
 
-// Brain write webhook
+// Brain graph — structured D1 queries (must be before brain-write catch-all)
+app.all('/api/brain/graph/*', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+
+// Brain search — semantic Vectorize search
+app.all('/api/brain/search', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api/brain/search'))
+app.all('/api/brain/search/*', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api/brain/search'))
+
+// Brain session state
+app.all('/api/session/*', (c) => forward(c.req.raw, c.env.BRAIN_WRITE, '/api/session'))
+
+// Brain write webhook (catch-all for /api/brain/*)
 app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
 
 // MCP context server — strip /api/mcp so downstream sees /, /.well-known/...
@@ -57,7 +68,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/graph', '/api/brain/search', '/api/session', '/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app
