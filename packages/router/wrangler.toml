@@ -19,5 +19,9 @@ binding = "OAUTH_SERVER"
 service = "thechefos-oauth-server"
 
 [[services]]
+binding = "BRAIN_GRAPH"
+service = "superclaude-brain-graph"
+
+[[services]]
 binding = "TELEGRAM_BOT"
 service = "thechefos-telegram-bot"
