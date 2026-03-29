@@ -1,6 +1,7 @@
 name = "thechefos-mcp-server"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
 
 [[kv_namespaces]]
 binding = "SESSION_KV"
@@ -10,3 +11,16 @@ id = "e9dfcffc9e094365aec142267cb39a1e"
 GITHUB_OWNER = "AetherCreator"
 GITHUB_REPO = "SuperClaude"
 GITHUB_BRANCH = "main"
+
+# Durable Objects — required by McpAgent
+[[durable_objects.bindings]]
+name = "TheChefOSMCP"
+class_name = "TheChefOSMCP"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TheChefOSMCP"]
+
+# Secrets (set via `wrangler secret put`):
+# GITHUB_TOKEN — read-only SuperClaude PAT
+# MCP_AUTH_TOKEN — Bearer token for MCP clients
