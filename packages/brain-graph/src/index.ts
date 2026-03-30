@@ -9,6 +9,25 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
+// CORS — allow Claude.ai artifacts, web_fetch, and all browser origins
+app.use('*', async (c, next) => {
+  if (c.req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-github-token',
+        'Access-Control-Max-Age': '86400',
+      },
+    });
+  }
+  await next();
+  c.res.headers.set('Access-Control-Allow-Origin', '*');
+  c.res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-github-token');
+});
+
 // POST /migrate — create tables
 app.post('/migrate', async (c) => {
   try {
@@ -528,3 +547,4 @@ app.get('/health', (c) =>
 );
 
 export default app;
+
