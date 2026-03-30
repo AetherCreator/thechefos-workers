@@ -11,6 +11,7 @@ id = "e9dfcffc9e094365aec142267cb39a1e"
 GITHUB_OWNER = "AetherCreator"
 GITHUB_REPO = "SuperClaude"
 GITHUB_BRANCH = "main"
+PROXY_URL = "https://thechefos-proxy.tveg-baking.workers.dev"
 
 # Durable Objects — required by McpAgent
 [[durable_objects.bindings]]
