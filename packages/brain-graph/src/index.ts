@@ -460,8 +460,31 @@ app.get('/ops/vitals', async (c) => {
 
 
 // ---------------------------------------------------------------------------
-// Session Usage Tracking
+// Session Usage Tracking + Odometer
 // ---------------------------------------------------------------------------
+
+interface OdometerRow {
+  id: string;
+  current_pct: number;
+  last_updated: string;
+  session_current_pct: number;
+  session_last_updated: string;
+  session_last_id: string | null;
+  weekly_current_pct: number;
+  weekly_reset_at: string;
+  weekly_last_updated: string | null;
+}
+
+interface SessionUsageBody {
+  date: string;
+  surface: string;
+  session_type: string;
+  usage_pct?: number;
+  msg_count?: number;
+  mcp_count?: number;
+  retry_loops?: number;
+  note?: string;
+}
 
 export interface SessionUsageRow {
   id: string;
@@ -470,52 +493,128 @@ export interface SessionUsageRow {
   session_type: string;
   msg_count: number | null;
   usage_pct: number | null;
+  baseline_pct: number | null;
+  burn_pct: number | null;
   mcp_count: number | null;
   retry_loops: number;
   note: string | null;
   created_at: string;
 }
 
-// POST /session/usage — log a session
+// GET /session/odometer — current odometer state with auto-reset logic
+app.get('/session/odometer', async (c) => {
+  const db = c.env.BRAIN_DB;
+  const row = await db.prepare('SELECT * FROM usage_odometer WHERE id = ?')
+    .bind('singleton').first<OdometerRow>();
+  if (!row) return c.json({ error: 'Odometer not initialized' }, 500);
+
+  const now = new Date();
+  const lastUpdated = new Date(row.session_last_updated || row.last_updated);
+  const hoursSinceLast = (now.getTime() - lastUpdated.getTime()) / 3_600_000;
+  const windowRolled = hoursSinceLast >= 5;
+
+  return c.json({
+    session: {
+      current_pct: windowRolled ? 0 : row.session_current_pct,
+      window_rolled: windowRolled,
+      hours_since_last: Math.round(hoursSinceLast * 10) / 10,
+      last_updated: row.session_last_updated || row.last_updated,
+    },
+    weekly: {
+      current_pct: row.weekly_current_pct,
+      reset_at: row.weekly_reset_at,
+    },
+  });
+});
+
+// POST /session/odometer/weekly-reset — reset weekly counter
+app.post('/session/odometer/weekly-reset', async (c) => {
+  const now = new Date().toISOString();
+  await c.env.BRAIN_DB.prepare(
+    'UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?'
+  ).bind(now, now, 'singleton').run();
+  return c.json({ ok: true, reset_at: now });
+});
+
+// POST /session/usage — log a session with full odometer logic
 app.post('/session/usage', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
-    const body = await c.req.json<Partial<SessionUsageRow>>();
+    const body = await c.req.json<SessionUsageBody>();
 
-    if (!body.date || !body.surface || !body.session_type) {
-      return c.json({ error: 'date, surface, and session_type are required' }, 400);
-    }
-
+    // Validation
     const validSurfaces = ['chat', 'code', 'dispatch'];
     const validTypes = ['infra', 'code-gen', 'planning', 'mixed'];
-
-    if (!validSurfaces.includes(body.surface)) {
+    if (!body.date || !body.surface || !body.session_type)
+      return c.json({ error: 'date, surface, session_type required' }, 400);
+    if (!validSurfaces.includes(body.surface))
       return c.json({ error: `surface must be one of: ${validSurfaces.join(', ')}` }, 400);
-    }
-    if (!validTypes.includes(body.session_type)) {
+    if (!validTypes.includes(body.session_type))
       return c.json({ error: `session_type must be one of: ${validTypes.join(', ')}` }, 400);
-    }
 
+    // 1. Read odometer
+    const odometer = await db.prepare('SELECT * FROM usage_odometer WHERE id = ?')
+      .bind('singleton').first<OdometerRow>();
+
+    const now = new Date();
+    const usage_pct: number | null = body.usage_pct ?? null;
+
+    // 2. Passive 5hr reset — infer from silence
+    const lastUpdated = new Date(
+      odometer?.session_last_updated || odometer?.last_updated || now.toISOString()
+    );
+    const hoursSinceLast = (now.getTime() - lastUpdated.getTime()) / 3_600_000;
+    const windowRolled = hoursSinceLast >= 5;
+    const baseline_pct = windowRolled ? 0 : (odometer?.session_current_pct ?? 0);
+
+    // 3. Compute burn (clamp to 0 — can't burn negative)
+    const burn_pct = usage_pct !== null ? Math.max(0, usage_pct - baseline_pct) : null;
+
+    // 4. Insert session row
     const id = `sess-${body.date}-${Date.now().toString(36)}`;
-    const now = new Date().toISOString();
+    const nowIso = now.toISOString();
 
     await db.prepare(
-      `INSERT INTO session_usage (id, date, surface, session_type, msg_count, usage_pct, mcp_count, retry_loops, note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO session_usage
+       (id, date, surface, session_type, msg_count, usage_pct, baseline_pct, burn_pct,
+        mcp_count, retry_loops, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
-      id,
-      body.date,
-      body.surface,
-      body.session_type,
-      body.msg_count ?? null,
-      body.usage_pct ?? null,
-      body.mcp_count ?? null,
-      body.retry_loops ?? 0,
-      body.note ?? null,
-      now,
+      id, body.date, body.surface, body.session_type,
+      body.msg_count ?? null, usage_pct, baseline_pct, burn_pct,
+      body.mcp_count ?? null, body.retry_loops ?? 0, body.note ?? null, nowIso
     ).run();
 
-    return c.json({ ok: true, id, date: body.date, surface: body.surface, session_type: body.session_type });
+    // 5. Update odometer — session window
+    const newSessionPct = usage_pct ?? baseline_pct;
+
+    // 6. Weekly accumulation — add burn to weekly total
+    const newWeeklyPct = (odometer?.weekly_current_pct ?? 0) + (burn_pct ?? 0);
+
+    await db.prepare(
+      `UPDATE usage_odometer SET
+         session_current_pct=?, session_last_updated=?, session_last_id=?,
+         weekly_current_pct=?, weekly_last_updated=?
+       WHERE id=?`
+    ).bind(newSessionPct, nowIso, id, newWeeklyPct, nowIso, 'singleton').run();
+
+    // 7. Flags
+    const flags: string[] = [];
+    if (windowRolled) flags.push('5hr window rolled — baseline reset to 0%');
+    if (burn_pct !== null && burn_pct >= 8) flags.push('high-burn session — consider fresh context next time');
+    if (usage_pct !== null && usage_pct >= 85) flags.push('approaching session limit — fresh session recommended');
+    if (newWeeklyPct >= 80) flags.push('weekly usage high — monitor toward limit');
+
+    return c.json({
+      ok: true, id,
+      burn_pct,
+      baseline_pct,
+      usage_pct,
+      window_rolled: windowRolled,
+      hours_since_last: Math.round(hoursSinceLast * 10) / 10,
+      weekly_total_pct: Math.round(newWeeklyPct * 10) / 10,
+      flags,
+    });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
@@ -557,6 +656,8 @@ app.get('/session/usage/summary', async (c) => {
       avgByTypeResult,
       retryCorrelationResult,
       totalResult,
+      burnByTypeResult,
+      odometerResult,
     ] = await Promise.all([
       db.prepare(`
         SELECT session_type,
@@ -598,6 +699,22 @@ app.get('/session/usage/summary', async (c) => {
       `).first<{ avg_usage_with_retries: number | null; avg_usage_no_retries: number | null; sessions_with_retries: number }>(),
 
       db.prepare('SELECT COUNT(*) as total FROM session_usage').first<{ total: number }>(),
+
+      // Burn by session type
+      db.prepare(`
+        SELECT session_type,
+          COUNT(*) as count,
+          AVG(burn_pct) as avg_burn,
+          MAX(burn_pct) as max_burn,
+          SUM(burn_pct) as total_burn,
+          AVG(usage_pct) as avg_close_pct
+        FROM session_usage
+        WHERE burn_pct IS NOT NULL
+        GROUP BY session_type ORDER BY avg_burn DESC
+      `).all<{ session_type: string; count: number; avg_burn: number; max_burn: number; total_burn: number; avg_close_pct: number }>(),
+
+      // Current odometer state
+      db.prepare('SELECT * FROM usage_odometer WHERE id = ?').bind('singleton').first(),
     ]);
 
     return c.json({
@@ -606,6 +723,8 @@ app.get('/session/usage/summary', async (c) => {
       by_surface: bySurfaceResult.results,
       mcp_impact: avgByTypeResult.results,
       retry_impact: retryCorrelationResult,
+      burn_by_type: burnByTypeResult.results,
+      odometer: odometerResult,
       hypothesis_status: totalResult?.total && totalResult.total >= 5
         ? 'accumulating_data'
         : 'insufficient_data',
@@ -704,5 +823,15 @@ app.get('/health', (c) =>
   c.json({ status: 'ok', worker: 'superclaude-brain-graph' }),
 );
 
-export default app;
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return app.fetch(request, env);
+  },
+  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    const now = new Date().toISOString();
+    await env.BRAIN_DB.prepare(
+      'UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?'
+    ).bind(now, now, 'singleton').run();
+  },
+};
 
