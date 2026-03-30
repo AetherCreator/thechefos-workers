@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"[path-scoped-rules] Before editing, check .claude/rules/ for matching path rules. Load any rule whose paths: glob matches the file being edited.\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx wrangler *)",
+      "Bash(npx tsc *)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(npx wrangler delete *)"
+    ]
+  }
+}
