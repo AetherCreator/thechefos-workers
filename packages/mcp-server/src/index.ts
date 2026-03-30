@@ -11,7 +11,7 @@ export interface Env {
   GITHUB_OWNER: string;
   GITHUB_REPO: string;
   GITHUB_BRANCH: string;
-  TheChefOSMCP: DurableObjectNamespace;
+  MCP_OBJECT: DurableObjectNamespace;
 }
 
 // ---------- GitHub helpers ----------
