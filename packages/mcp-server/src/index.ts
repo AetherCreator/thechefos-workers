@@ -12,6 +12,7 @@ export interface Env {
   GITHUB_REPO: string;
   GITHUB_BRANCH: string;
   MCP_OBJECT: DurableObjectNamespace;
+  PROXY_URL: string;  // https://thechefos-proxy.tveg-baking.workers.dev
 }
 
 // ---------- GitHub helpers ----------
@@ -122,6 +123,101 @@ export class TheChefOSMCP extends McpAgent<Env> {
         return { content: [{ type: "text" as const, text: content }] };
       }
     );
+
+    // ---------- Proxy tools ----------
+
+    const proxyCall = async (
+      service: string,
+      operation: string,
+      params: Record<string, unknown>,
+    ) => {
+      const res = await fetch(`${this.env.PROXY_URL}/${service}/${operation}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.env.MCP_AUTH_TOKEN}`,
+        },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+      return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
+    };
+
+    this.server.tool(
+      "proxy_github",
+      "Perform GitHub API operations — get/put files, list branches, check CI",
+      {
+        operation: z.string().describe(
+          "Operation: get_file | put_file | list_dir | list_branches | " +
+          "create_pr | merge_branch | list_commits | get_actions_runs | get_repo_tree"
+        ),
+        params: z.object({}).passthrough().describe(
+          "Operation params: repo, path, content, sha, message, branch, base, head"
+        ),
+      },
+      async ({ operation, params }) =>
+        proxyCall("github", operation, params as Record<string, unknown>),
+    );
+
+    this.server.tool(
+      "proxy_cloudflare",
+      "Perform Cloudflare operations — list workers, query D1, manage KV",
+      {
+        operation: z.string().describe(
+          "Operation: workers_list | d1_query | kv_get | kv_set | kv_list | deploy_check | get_account"
+        ),
+        params: z.object({}).passthrough().describe(
+          "Operation params: database_id, sql, namespace_id, key, value"
+        ),
+      },
+      async ({ operation, params }) =>
+        proxyCall("cloudflare", operation, params as Record<string, unknown>),
+    );
+
+    this.server.tool(
+      "proxy_vercel",
+      "Perform Vercel operations — list projects, deployments, logs",
+      {
+        operation: z.string().describe(
+          "Operation: list_projects | list_deployments | get_runtime_logs | get_deployment | check_domain"
+        ),
+        params: z.object({}).passthrough().describe(
+          "Operation params: project_id, team_id, deployment_id, since, level, domain"
+        ),
+      },
+      async ({ operation, params }) =>
+        proxyCall("vercel", operation, params as Record<string, unknown>),
+    );
+
+    this.server.tool(
+      "proxy_calendar",
+      "Perform Google Calendar operations — list events, create event, find free time",
+      {
+        operation: z.string().describe(
+          "Operation: list_calendars | list_events | create_event | find_free_time"
+        ),
+        params: z.object({}).passthrough().describe(
+          "Operation params: calendar_id, time_min, time_max, query, event"
+        ),
+      },
+      async ({ operation, params }) =>
+        proxyCall("calendar", operation, params as Record<string, unknown>),
+    );
+
+    this.server.tool(
+      "proxy_gmail",
+      "Perform Gmail operations — search messages, read threads",
+      {
+        operation: z.string().describe(
+          "Operation: search_messages | get_message | get_profile | get_thread"
+        ),
+        params: z.object({}).passthrough().describe(
+          "Operation params: q, max_results, message_id, thread_id"
+        ),
+      },
+      async ({ operation, params }) =>
+        proxyCall("gmail", operation, params as Record<string, unknown>),
+    );
   }
 }
 
@@ -155,15 +251,12 @@ export default {
     }
 
     // Discovery paths — allow unauthenticated so claude.ai handshake succeeds
-    // McpAgent GET / and POST / (capability negotiation) must be public
     const isDiscovery = request.method === "GET" ||
       PUBLIC_PATHS.some(p => url.pathname === p || url.pathname.startsWith(p));
 
     if (!isDiscovery) {
-      // Auth required for tool execution (POST with session established)
       const authHeader = request.headers.get("Authorization");
       const bearerToken = authHeader?.replace("Bearer ", "").trim();
-      // Allow if token matches OR if Mcp-Session-Id is present (session already negotiated)
       const hasSession = request.headers.get("Mcp-Session-Id");
       if (!hasSession && (!bearerToken || bearerToken !== env.MCP_AUTH_TOKEN)) {
         return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -177,9 +270,6 @@ export default {
       }
     }
 
-    // Route all MCP traffic to McpAgent
-    // Router strips /api/mcp prefix so we serve at "/"
-    // McpAgent handles Streamable HTTP (POST) + SSE (GET)
     try {
       return await TheChefOSMCP.serve("/").fetch(request, env, ctx);
     } catch (err: unknown) {
