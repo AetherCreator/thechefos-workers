@@ -127,11 +127,14 @@ export class TheChefOSMCP extends McpAgent<Env> {
 
 // ---------- Worker entry ----------
 
+// Paths that McpAgent needs for discovery/negotiation — no auth required
+const PUBLIC_PATHS = ["/", "/health", "/.well-known/mcp", "/sse"];
+
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    // Health check — no auth required
+    // Health check — always public
     if (url.pathname === "/health") {
       return new Response(
         JSON.stringify({ status: "ok", worker: "thechefos-mcp-server" }),
@@ -139,17 +142,39 @@ export default {
       );
     }
 
-    // Auth check — Bearer MCP_AUTH_TOKEN
-    const authHeader = request.headers.get("Authorization");
-    const token = authHeader?.replace("Bearer ", "").trim();
-    if (!token || token !== env.MCP_AUTH_TOKEN) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
+    // OPTIONS — always allow (CORS preflight)
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
         headers: {
-          "Content-Type": "application/json",
-          "WWW-Authenticate": 'Bearer realm="thechefos-mcp-server"',
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, Mcp-Session-Id",
         },
       });
+    }
+
+    // Discovery paths — allow unauthenticated so claude.ai handshake succeeds
+    // McpAgent GET / and POST / (capability negotiation) must be public
+    const isDiscovery = request.method === "GET" ||
+      PUBLIC_PATHS.some(p => url.pathname === p || url.pathname.startsWith(p));
+
+    if (!isDiscovery) {
+      // Auth required for tool execution (POST with session established)
+      const authHeader = request.headers.get("Authorization");
+      const bearerToken = authHeader?.replace("Bearer ", "").trim();
+      // Allow if token matches OR if Mcp-Session-Id is present (session already negotiated)
+      const hasSession = request.headers.get("Mcp-Session-Id");
+      if (!hasSession && (!bearerToken || bearerToken !== env.MCP_AUTH_TOKEN)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "WWW-Authenticate": 'Bearer realm="thechefos-mcp-server"',
+          },
+        });
+      }
     }
 
     // Route all MCP traffic to McpAgent
