@@ -35,10 +35,27 @@ export async function runMigrations(db: D1Database): Promise<void> {
         graduated_at TEXT
       )
     `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS session_usage (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        surface TEXT NOT NULL,
+        session_type TEXT NOT NULL,
+        msg_count INTEGER,
+        usage_pct REAL,
+        mcp_count INTEGER,
+        retry_loops INTEGER DEFAULT 0,
+        note TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_domain ON brain_nodes(domain)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_type ON brain_nodes(type)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_updated_at ON brain_nodes(updated_at)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_connections_source ON brain_connections(source_id)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_connections_target ON brain_connections(target_id)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_session_date ON session_usage(date)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_session_type ON session_usage(session_type)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_session_surface ON session_usage(surface)`),
   ]);
 }
