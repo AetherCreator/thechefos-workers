@@ -29,3 +29,7 @@ service = "thechefos-oauth-server"
 [[services]]
 binding = "TELEGRAM_BOT"
 service = "thechefos-telegram-bot"
+
+[[services]]
+binding = "PROXY"
+service = "thechefos-proxy"
