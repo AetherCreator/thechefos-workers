@@ -1,0 +1,16 @@
+name = "thechefos-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+GITHUB_OWNER = "AetherCreator"
+
+# Secrets (wrangler secret put):
+# GITHUB_TOKEN       — personal access token
+# CF_API_TOKEN       — Cloudflare API token
+# CF_ACCOUNT_ID      — Cloudflare account ID
+# VERCEL_TOKEN       — Vercel API token
+# VERCEL_TEAM_ID     — team_N1DyKcTkZcNw6KwBzbffimTZ
+# MCP_AUTH_TOKEN     — shared Bearer token (same as mcp-server)
+# GOOGLE_OAUTH_TOKENS — JSON blob: { access_token, refresh_token, expiry }
