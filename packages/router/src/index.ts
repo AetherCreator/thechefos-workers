@@ -49,6 +49,10 @@ app.all('/api/brain/graph/*', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api
 app.all('/api/brain/search', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api/brain/search'))
 app.all('/api/brain/search/*', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api/brain/search'))
 
+// Session odometer (brain-graph D1)
+app.get('/api/session/odometer', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+app.post('/api/session/odometer/weekly-reset', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+
 // Session usage tracking (brain-graph D1)
 app.post('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
 app.get('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))

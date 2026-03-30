@@ -2,6 +2,9 @@ name = "superclaude-brain-graph"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
 
+[triggers]
+crons = ["0 5 * * 1"]
+
 [[d1_databases]]
 binding = "BRAIN_DB"
 database_name = "superclaude-brain"
