@@ -14,7 +14,7 @@ GITHUB_BRANCH = "main"
 
 # Durable Objects — required by McpAgent
 [[durable_objects.bindings]]
-name = "TheChefOSMCP"
+name = "MCP_OBJECT"
 class_name = "TheChefOSMCP"
 
 [[migrations]]
