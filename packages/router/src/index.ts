@@ -49,7 +49,12 @@ app.all('/api/brain/graph/*', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api
 app.all('/api/brain/search', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api/brain/search'))
 app.all('/api/brain/search/*', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api/brain/search'))
 
-// Brain session state
+// Session usage tracking (brain-graph D1)
+app.post('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+app.get('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+app.get('/api/session/usage/summary', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+
+// Brain session state (brain-write)
 app.all('/api/session/*', (c) => forward(c.req.raw, c.env.BRAIN_WRITE, '/api/session'))
 
 // Brain write webhook (catch-all for /api/brain/*)
