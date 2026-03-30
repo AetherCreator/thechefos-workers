@@ -21,16 +21,9 @@ function forward(req: Request, service: Fetcher, prefix: string): Promise<Respon
   return service.fetch(new Request(url.toString(), req))
 }
 
+// CORS — wildcard (personal API; Claude.ai artifacts use null/sandboxed origin)
 app.use('*', cors({
-  origin: [
-    'https://chefos-six.vercel.app',
-    'https://superconci.vercel.app',
-    'https://morewords.vercel.app',
-    'https://thechefos.app',
-    'https://api.thechefos.app',
-    'https://claude.ai',
-    'https://www.claude.ai',
-  ],
+  origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret', 'x-github-token'],
 }))
