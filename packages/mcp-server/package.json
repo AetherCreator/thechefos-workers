@@ -6,7 +6,7 @@
   "dependencies": {
     "agents": "^0.8.7",
     "@modelcontextprotocol/sdk": "^1.28.0",
-    "zod": "^3.23.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "wrangler": "^4.0.0",
