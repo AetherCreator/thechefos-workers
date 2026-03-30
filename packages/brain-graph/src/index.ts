@@ -458,6 +458,164 @@ app.get('/ops/vitals', async (c) => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// Session Usage Tracking
+// ---------------------------------------------------------------------------
+
+export interface SessionUsageRow {
+  id: string;
+  date: string;
+  surface: string;
+  session_type: string;
+  msg_count: number | null;
+  usage_pct: number | null;
+  mcp_count: number | null;
+  retry_loops: number;
+  note: string | null;
+  created_at: string;
+}
+
+// POST /session/usage — log a session
+app.post('/session/usage', async (c) => {
+  const db = c.env.BRAIN_DB;
+  try {
+    const body = await c.req.json<Partial<SessionUsageRow>>();
+
+    if (!body.date || !body.surface || !body.session_type) {
+      return c.json({ error: 'date, surface, and session_type are required' }, 400);
+    }
+
+    const validSurfaces = ['chat', 'code', 'dispatch'];
+    const validTypes = ['infra', 'code-gen', 'planning', 'mixed'];
+
+    if (!validSurfaces.includes(body.surface)) {
+      return c.json({ error: `surface must be one of: ${validSurfaces.join(', ')}` }, 400);
+    }
+    if (!validTypes.includes(body.session_type)) {
+      return c.json({ error: `session_type must be one of: ${validTypes.join(', ')}` }, 400);
+    }
+
+    const id = `sess-${body.date}-${Date.now().toString(36)}`;
+    const now = new Date().toISOString();
+
+    await db.prepare(
+      `INSERT INTO session_usage (id, date, surface, session_type, msg_count, usage_pct, mcp_count, retry_loops, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      id,
+      body.date,
+      body.surface,
+      body.session_type,
+      body.msg_count ?? null,
+      body.usage_pct ?? null,
+      body.mcp_count ?? null,
+      body.retry_loops ?? 0,
+      body.note ?? null,
+      now,
+    ).run();
+
+    return c.json({ ok: true, id, date: body.date, surface: body.surface, session_type: body.session_type });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// GET /session/usage — list sessions with optional filters
+app.get('/session/usage', async (c) => {
+  const db = c.env.BRAIN_DB;
+  try {
+    const surface = c.req.query('surface');
+    const session_type = c.req.query('session_type');
+    const since = c.req.query('since');
+    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 200);
+
+    let sql = 'SELECT * FROM session_usage WHERE 1=1';
+    const bindings: (string | number)[] = [];
+
+    if (surface) { sql += ' AND surface = ?'; bindings.push(surface); }
+    if (session_type) { sql += ' AND session_type = ?'; bindings.push(session_type); }
+    if (since) { sql += ' AND date >= ?'; bindings.push(since); }
+
+    sql += ' ORDER BY date DESC, created_at DESC LIMIT ?';
+    bindings.push(limit);
+
+    const rows = await db.prepare(sql).bind(...bindings).all<SessionUsageRow>();
+    return c.json({ sessions: rows.results, total: rows.results.length });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// GET /session/usage/summary — aggregated stats for pattern analysis
+app.get('/session/usage/summary', async (c) => {
+  const db = c.env.BRAIN_DB;
+  try {
+    const [
+      byTypeResult,
+      bySurfaceResult,
+      avgByTypeResult,
+      retryCorrelationResult,
+      totalResult,
+    ] = await Promise.all([
+      db.prepare(`
+        SELECT session_type,
+               COUNT(*) as count,
+               AVG(usage_pct) as avg_usage_pct,
+               AVG(msg_count) as avg_msgs,
+               SUM(retry_loops) as total_retries
+        FROM session_usage
+        WHERE usage_pct IS NOT NULL
+        GROUP BY session_type
+        ORDER BY avg_usage_pct DESC
+      `).all<{ session_type: string; count: number; avg_usage_pct: number; avg_msgs: number; total_retries: number }>(),
+
+      db.prepare(`
+        SELECT surface,
+               COUNT(*) as count,
+               AVG(usage_pct) as avg_usage_pct
+        FROM session_usage
+        WHERE usage_pct IS NOT NULL
+        GROUP BY surface
+      `).all<{ surface: string; count: number; avg_usage_pct: number }>(),
+
+      db.prepare(`
+        SELECT session_type,
+               AVG(CASE WHEN mcp_count > 2 THEN usage_pct ELSE NULL END) as avg_high_mcp_usage,
+               AVG(CASE WHEN mcp_count <= 2 THEN usage_pct ELSE NULL END) as avg_low_mcp_usage
+        FROM session_usage
+        WHERE usage_pct IS NOT NULL AND mcp_count IS NOT NULL
+        GROUP BY session_type
+      `).all<{ session_type: string; avg_high_mcp_usage: number | null; avg_low_mcp_usage: number | null }>(),
+
+      db.prepare(`
+        SELECT
+          AVG(CASE WHEN retry_loops = 1 THEN usage_pct ELSE NULL END) as avg_usage_with_retries,
+          AVG(CASE WHEN retry_loops = 0 THEN usage_pct ELSE NULL END) as avg_usage_no_retries,
+          COUNT(CASE WHEN retry_loops = 1 THEN 1 END) as sessions_with_retries
+        FROM session_usage
+        WHERE usage_pct IS NOT NULL
+      `).first<{ avg_usage_with_retries: number | null; avg_usage_no_retries: number | null; sessions_with_retries: number }>(),
+
+      db.prepare('SELECT COUNT(*) as total FROM session_usage').first<{ total: number }>(),
+    ]);
+
+    return c.json({
+      total_sessions: totalResult?.total || 0,
+      by_type: byTypeResult.results,
+      by_surface: bySurfaceResult.results,
+      mcp_impact: avgByTypeResult.results,
+      retry_impact: retryCorrelationResult,
+      hypothesis_status: totalResult?.total && totalResult.total >= 5
+        ? 'accumulating_data'
+        : 'insufficient_data',
+      generated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Dashboard + Health
 // ---------------------------------------------------------------------------
