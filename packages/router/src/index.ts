@@ -10,6 +10,7 @@ export interface Env {
   MCP_SERVER: Fetcher
   OAUTH_SERVER: Fetcher
   TELEGRAM_BOT: Fetcher
+  PROXY: Fetcher
 }
 
 const app = new Hono<{ Bindings: Env }>()
@@ -64,6 +65,9 @@ app.all('/api/session/*', (c) => forward(c.req.raw, c.env.BRAIN_WRITE, '/api/ses
 // Brain write webhook (catch-all for /api/brain/*)
 app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
 
+// Proxy — universal tool proxy (strip /api/proxy so downstream sees /github/*, /vercel/*, etc.)
+app.all('/api/proxy/*', (c) => forward(c.req.raw, c.env.PROXY, '/api/proxy'))
+
 // MCP context server — strip /api/mcp so downstream sees /, /.well-known/...
 app.all('/api/mcp', (c) => forward(c.req.raw, c.env.MCP_SERVER, '/api/mcp'))
 app.all('/api/mcp/*', (c) => forward(c.req.raw, c.env.MCP_SERVER, '/api/mcp'))
@@ -80,7 +84,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/graduate', '/api/brain/ops/vitals', '/api/brain/graph', '/api/brain/search', '/api/session', '/api/brain', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/graduate', '/api/brain/ops/vitals', '/api/brain/graph', '/api/brain/search', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app
