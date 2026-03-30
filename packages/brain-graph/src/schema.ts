@@ -43,10 +43,23 @@ export async function runMigrations(db: D1Database): Promise<void> {
         session_type TEXT NOT NULL,
         msg_count INTEGER,
         usage_pct REAL,
+        baseline_pct REAL,
+        burn_pct REAL,
         mcp_count INTEGER,
         retry_loops INTEGER DEFAULT 0,
         note TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS usage_odometer (
+        id TEXT PRIMARY KEY DEFAULT 'singleton',
+        session_current_pct REAL NOT NULL DEFAULT 0,
+        session_last_updated TEXT NOT NULL,
+        session_last_id TEXT,
+        weekly_current_pct REAL NOT NULL DEFAULT 0,
+        weekly_reset_at TEXT NOT NULL,
+        weekly_last_updated TEXT
       )
     `),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_domain ON brain_nodes(domain)`),
