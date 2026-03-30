@@ -131,7 +131,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
 const PUBLIC_PATHS = ["/", "/health", "/.well-known/mcp", "/sse"];
 
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
     // Health check — always public
@@ -180,6 +180,17 @@ export default {
     // Route all MCP traffic to McpAgent
     // Router strips /api/mcp prefix so we serve at "/"
     // McpAgent handles Streamable HTTP (POST) + SSE (GET)
-    return TheChefOSMCP.serve("/").fetch(request, env, ctx);
+    try {
+      return await TheChefOSMCP.serve("/").fetch(request, env, ctx);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.stack || err.message : String(err);
+      return new Response(JSON.stringify({ error: message }), {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
   },
 };
