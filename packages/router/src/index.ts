@@ -26,7 +26,7 @@ function forward(req: Request, service: Fetcher, prefix: string): Promise<Respon
 app.use('*', cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret', 'x-github-token'],
+  allowHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-product', 'x-webhook-secret', 'x-github-token', 'Mcp-Session-Id'],
 }))
 
 // OAuth authorization server — strip /oauth so downstream sees /authorize, /token
