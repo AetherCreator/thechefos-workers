@@ -143,80 +143,313 @@ export class TheChefOSMCP extends McpAgent<Env> {
       return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
     };
 
+    // ── GitHub Tools ──────────────────────────────────────────────────────
+
     this.server.tool(
-      "proxy_github",
-      "Perform GitHub API operations — get/put files, list branches, check CI",
+      "github_get_file",
+      "Read a file from any AetherCreator GitHub repo",
       {
-        operation: z.string().describe(
-          "Operation: get_file | put_file | list_dir | list_branches | " +
-          "create_pr | merge_branch | list_commits | get_actions_runs | get_repo_tree"
-        ),
-        params: z.object({}).passthrough().describe(
-          "Operation params: repo, path, content, sha, message, branch, base, head"
-        ),
+        repo: z.string().describe('Repository name (e.g. "SuperClaude", "chefos")'),
+        path: z.string().describe('File path (e.g. "brain/GRAPH-INDEX.md")'),
+        branch: z.string().default("main").describe("Branch name"),
       },
-      async ({ operation, params }) =>
-        proxyCall("github", operation, params as Record<string, unknown>),
+      async ({ repo, path, branch }) =>
+        proxyCall("github", "get_file", { repo, path, branch })
     );
 
     this.server.tool(
-      "proxy_cloudflare",
-      "Perform Cloudflare operations — list workers, query D1, manage KV",
+      "github_put_file",
+      "Create or update a file in any AetherCreator GitHub repo. For updates, provide sha of current file.",
       {
-        operation: z.string().describe(
-          "Operation: workers_list | d1_query | kv_get | kv_set | kv_list | deploy_check | get_account"
-        ),
-        params: z.object({}).passthrough().describe(
-          "Operation params: database_id, sql, namespace_id, key, value"
-        ),
+        repo: z.string().describe('Repository name (e.g. "SuperClaude", "chefos")'),
+        path: z.string().describe('File path (e.g. "skills/user/reflexion/SKILL.md")'),
+        content: z.string().describe("Full file content (plain text — proxy handles base64)"),
+        message: z.string().describe("Commit message"),
+        sha: z.string().optional().describe("Current file SHA (required for updates, omit for new files)"),
+        branch: z.string().default("main").describe("Target branch"),
       },
-      async ({ operation, params }) =>
-        proxyCall("cloudflare", operation, params as Record<string, unknown>),
+      async ({ repo, path, content, message, sha, branch }) =>
+        proxyCall("github", "put_file", { repo, path, content, message, sha, branch })
     );
 
     this.server.tool(
-      "proxy_vercel",
-      "Perform Vercel operations — list projects, deployments, logs",
+      "github_list_dir",
+      "List files in a directory of any AetherCreator GitHub repo",
       {
-        operation: z.string().describe(
-          "Operation: list_projects | list_deployments | get_runtime_logs | get_deployment | check_domain"
-        ),
-        params: z.object({}).passthrough().describe(
-          "Operation params: project_id, team_id, deployment_id, since, level, domain"
-        ),
+        repo: z.string().describe('Repository name (e.g. "SuperClaude")'),
+        path: z.string().default("").describe('Directory path (e.g. "brain/01-chef")'),
+        branch: z.string().default("main").describe("Branch name"),
       },
-      async ({ operation, params }) =>
-        proxyCall("vercel", operation, params as Record<string, unknown>),
+      async ({ repo, path, branch }) =>
+        proxyCall("github", "list_dir", { repo, path, branch })
     );
 
     this.server.tool(
-      "proxy_calendar",
-      "Perform Google Calendar operations — list events, create event, find free time",
+      "github_repo_tree",
+      "Get full recursive file tree for a repo (useful for finding files)",
       {
-        operation: z.string().describe(
-          "Operation: list_calendars | list_events | create_event | find_free_time"
-        ),
-        params: z.object({}).passthrough().describe(
-          "Operation params: calendar_id, time_min, time_max, query, event"
-        ),
+        repo: z.string().describe('Repository name'),
+        branch: z.string().default("main").describe("Branch name"),
       },
-      async ({ operation, params }) =>
-        proxyCall("calendar", operation, params as Record<string, unknown>),
+      async ({ repo, branch }) =>
+        proxyCall("github", "get_repo_tree", { repo, branch })
     );
 
     this.server.tool(
-      "proxy_gmail",
-      "Perform Gmail operations — search messages, read threads",
+      "github_list_branches",
+      "List branches for a repo",
       {
-        operation: z.string().describe(
-          "Operation: search_messages | get_message | get_profile | get_thread"
-        ),
-        params: z.object({}).passthrough().describe(
-          "Operation params: q, max_results, message_id, thread_id"
-        ),
+        repo: z.string().describe('Repository name'),
       },
-      async ({ operation, params }) =>
-        proxyCall("gmail", operation, params as Record<string, unknown>),
+      async ({ repo }) =>
+        proxyCall("github", "list_branches", { repo })
+    );
+
+    this.server.tool(
+      "github_create_pr",
+      "Create a pull request",
+      {
+        repo: z.string().describe('Repository name'),
+        head: z.string().describe("Source branch"),
+        base: z.string().default("main").describe("Target branch"),
+        message: z.string().describe("PR title"),
+      },
+      async ({ repo, head, base, message }) =>
+        proxyCall("github", "create_pr", { repo, head, base, message })
+    );
+
+    this.server.tool(
+      "github_merge_branch",
+      "Merge one branch into another",
+      {
+        repo: z.string().describe('Repository name'),
+        head: z.string().describe("Branch to merge from"),
+        base: z.string().describe("Branch to merge into"),
+        message: z.string().describe("Merge commit message"),
+      },
+      async ({ repo, head, base, message }) =>
+        proxyCall("github", "merge_branch", { repo, head, base, message })
+    );
+
+    this.server.tool(
+      "github_list_commits",
+      "List recent commits on a branch",
+      {
+        repo: z.string().describe('Repository name'),
+        branch: z.string().default("main").describe("Branch name"),
+        per_page: z.number().default(20).describe("Number of commits to return"),
+      },
+      async ({ repo, branch, per_page }) =>
+        proxyCall("github", "list_commits", { repo, branch, per_page })
+    );
+
+    this.server.tool(
+      "github_actions_runs",
+      "Get recent GitHub Actions workflow runs",
+      {
+        repo: z.string().describe('Repository name'),
+        per_page: z.number().default(10).describe("Number of runs to return"),
+      },
+      async ({ repo, per_page }) =>
+        proxyCall("github", "get_actions_runs", { repo, per_page })
+    );
+
+    // ── Cloudflare Tools ──────────────────────────────────────────────────
+
+    this.server.tool(
+      "cf_workers_list",
+      "List all deployed Cloudflare Workers",
+      {},
+      async () => proxyCall("cloudflare", "workers_list", {})
+    );
+
+    this.server.tool(
+      "cf_d1_query",
+      "Run a SQL query against a D1 database",
+      {
+        database_id: z.string().describe("D1 database UUID"),
+        sql: z.string().describe("SQL query to execute"),
+        params: z.array(z.unknown()).default([]).describe("Query parameters"),
+      },
+      async ({ database_id, sql, params }) =>
+        proxyCall("cloudflare", "d1_query", { database_id, sql, params })
+    );
+
+    this.server.tool(
+      "cf_kv_get",
+      "Read a value from a KV namespace",
+      {
+        namespace_id: z.string().describe("KV namespace ID"),
+        key: z.string().describe("Key to read"),
+      },
+      async ({ namespace_id, key }) =>
+        proxyCall("cloudflare", "kv_get", { namespace_id, key })
+    );
+
+    this.server.tool(
+      "cf_kv_set",
+      "Write a value to a KV namespace",
+      {
+        namespace_id: z.string().describe("KV namespace ID"),
+        key: z.string().describe("Key to write"),
+        value: z.string().describe("Value to store"),
+      },
+      async ({ namespace_id, key, value }) =>
+        proxyCall("cloudflare", "kv_set", { namespace_id, key, value })
+    );
+
+    this.server.tool(
+      "cf_kv_list",
+      "List all keys in a KV namespace",
+      {
+        namespace_id: z.string().describe("KV namespace ID"),
+      },
+      async ({ namespace_id }) =>
+        proxyCall("cloudflare", "kv_list", { namespace_id })
+    );
+
+    // ── Vercel Tools ──────────────────────────────────────────────────────
+
+    this.server.tool(
+      "vercel_list_projects",
+      "List all Vercel projects",
+      {
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+      },
+      async ({ team_id }) =>
+        proxyCall("vercel", "list_projects", { team_id })
+    );
+
+    this.server.tool(
+      "vercel_list_deployments",
+      "List recent deployments for a project",
+      {
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+        project_id: z.string().optional().describe("Filter to specific project ID"),
+      },
+      async ({ team_id, project_id }) =>
+        proxyCall("vercel", "list_deployments", { team_id, project_id })
+    );
+
+    this.server.tool(
+      "vercel_get_deployment",
+      "Get details of a specific deployment",
+      {
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+        deployment_id: z.string().describe("Deployment ID"),
+      },
+      async ({ team_id, deployment_id }) =>
+        proxyCall("vercel", "get_deployment", { team_id, deployment_id })
+    );
+
+    this.server.tool(
+      "vercel_runtime_logs",
+      "Get runtime logs for a deployment",
+      {
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+        deployment_id: z.string().describe("Deployment ID"),
+        since: z.number().optional().describe("Unix timestamp — defaults to last hour"),
+      },
+      async ({ team_id, deployment_id, since }) =>
+        proxyCall("vercel", "get_runtime_logs", { team_id, deployment_id, since })
+    );
+
+    // ── Calendar Tools ────────────────────────────────────────────────────
+
+    this.server.tool(
+      "calendar_list",
+      "List all available Google Calendars",
+      {},
+      async () => proxyCall("calendar", "list_calendars", {})
+    );
+
+    this.server.tool(
+      "calendar_events",
+      "List upcoming calendar events",
+      {
+        calendar_id: z.string().default("primary").describe("Calendar ID"),
+        time_min: z.string().optional().describe("Start time (ISO 8601) — defaults to now"),
+        time_max: z.string().optional().describe("End time (ISO 8601) — defaults to 7 days from now"),
+        query: z.string().optional().describe("Search query to filter events"),
+      },
+      async ({ calendar_id, time_min, time_max, query }) =>
+        proxyCall("calendar", "list_events", { calendar_id, time_min, time_max, query })
+    );
+
+    this.server.tool(
+      "calendar_create_event",
+      "Create a new calendar event",
+      {
+        calendar_id: z.string().default("primary").describe("Calendar ID"),
+        summary: z.string().describe("Event title"),
+        start: z.string().describe("Start time (ISO 8601)"),
+        end: z.string().describe("End time (ISO 8601)"),
+        description: z.string().optional().describe("Event description"),
+        location: z.string().optional().describe("Event location"),
+      },
+      async ({ calendar_id, summary, start, end, description, location }) =>
+        proxyCall("calendar", "create_event", {
+          calendar_id,
+          event: {
+            summary,
+            start: { dateTime: start },
+            end: { dateTime: end },
+            description,
+            location,
+          },
+        })
+    );
+
+    this.server.tool(
+      "calendar_free_time",
+      "Find free/busy time slots",
+      {
+        calendar_id: z.string().default("primary").describe("Calendar ID"),
+        time_min: z.string().describe("Start of range (ISO 8601)"),
+        time_max: z.string().describe("End of range (ISO 8601)"),
+      },
+      async ({ calendar_id, time_min, time_max }) =>
+        proxyCall("calendar", "find_free_time", { calendar_id, time_min, time_max })
+    );
+
+    // ── Gmail Tools ───────────────────────────────────────────────────────
+
+    this.server.tool(
+      "gmail_search",
+      "Search Gmail messages",
+      {
+        q: z.string().describe('Gmail search query (e.g. "from:boss subject:review")'),
+        max_results: z.number().default(10).describe("Number of results"),
+      },
+      async ({ q, max_results }) =>
+        proxyCall("gmail", "search_messages", { q, max_results })
+    );
+
+    this.server.tool(
+      "gmail_read_message",
+      "Read a specific Gmail message by ID",
+      {
+        message_id: z.string().describe("Gmail message ID"),
+      },
+      async ({ message_id }) =>
+        proxyCall("gmail", "get_message", { message_id })
+    );
+
+    this.server.tool(
+      "gmail_read_thread",
+      "Read a full Gmail thread by ID",
+      {
+        thread_id: z.string().describe("Gmail thread ID"),
+      },
+      async ({ thread_id }) =>
+        proxyCall("gmail", "get_thread", { thread_id })
+    );
+
+    this.server.tool(
+      "gmail_profile",
+      "Get Gmail profile info (email address, messages total)",
+      {},
+      async () => proxyCall("gmail", "get_profile", {})
     );
   }
 }
