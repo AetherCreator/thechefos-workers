@@ -451,6 +451,83 @@ export class TheChefOSMCP extends McpAgent<Env> {
       {},
       async () => proxyCall("gmail", "get_profile", {})
     );
+
+    // ── Val Town Tools ───────────────────────────────────────────────────────
+
+    this.server.tool(
+      "valtown_me",
+      "Get Val Town profile info",
+      {},
+      async () => proxyCall("valtown", "me", {})
+    );
+
+    this.server.tool(
+      "valtown_list_vals",
+      "List all Val Town vals",
+      {
+        limit: z.number().default(20).describe("Number of vals to return"),
+        offset: z.number().default(0).describe("Pagination offset"),
+      },
+      async ({ limit, offset }) =>
+        proxyCall("valtown", "list_vals", { limit, offset })
+    );
+
+    this.server.tool(
+      "valtown_create_val",
+      "Create a new Val Town val (serverless function)",
+      {
+        name: z.string().describe("Val name (e.g. 'brainHealthPulse')"),
+        code: z.string().describe("Full TypeScript code for the val"),
+        type: z.enum(["http", "cron", "email"]).default("http").describe("Trigger type"),
+        privacy: z.enum(["public", "private", "unlisted"]).default("private").describe("Privacy setting"),
+        readme: z.string().optional().describe("Optional README/description"),
+      },
+      async ({ name, code, type, privacy, readme }) =>
+        proxyCall("valtown", "create_val", { name, code, type, privacy, readme })
+    );
+
+    this.server.tool(
+      "valtown_get_val",
+      "Get details of a specific val",
+      {
+        val_id: z.string().describe("Val UUID"),
+      },
+      async ({ val_id }) =>
+        proxyCall("valtown", "get_val", { val_id })
+    );
+
+    this.server.tool(
+      "valtown_update_val",
+      "Update a val's code (creates new version)",
+      {
+        val_id: z.string().describe("Val UUID"),
+        code: z.string().describe("Updated TypeScript code"),
+        type: z.enum(["http", "cron", "email"]).optional().describe("Change trigger type"),
+      },
+      async ({ val_id, code, type }) =>
+        proxyCall("valtown", "update_val", { val_id, code, type })
+    );
+
+    this.server.tool(
+      "valtown_delete_val",
+      "Delete a val",
+      {
+        val_id: z.string().describe("Val UUID"),
+      },
+      async ({ val_id }) =>
+        proxyCall("valtown", "delete_val", { val_id })
+    );
+
+    this.server.tool(
+      "valtown_sqlite",
+      "Execute SQL against Val Town's built-in SQLite database",
+      {
+        sql: z.string().describe("SQL statement to execute"),
+        args: z.array(z.unknown()).default([]).describe("Query parameters"),
+      },
+      async ({ sql, args }) =>
+        proxyCall("valtown", "sqlite_execute", { sql, args })
+    );
   }
 }
 

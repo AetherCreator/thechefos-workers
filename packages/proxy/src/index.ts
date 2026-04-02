@@ -11,6 +11,7 @@ export interface Env {
   VERCEL_TEAM_ID: string
   MCP_AUTH_TOKEN: string
   GOOGLE_OAUTH_TOKENS: string
+  VALTOWN_TOKEN: string
 }
 
 const app = new Hono<{ Bindings: Env }>()
@@ -431,6 +432,101 @@ app.post('/gmail/:operation', async (c) => {
 
     } else {
       return c.json({ ok: false, error: `Unknown gmail operation: ${op}` }, 400)
+    }
+
+    return c.json({ ok: true, data })
+  } catch (err: unknown) {
+    return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500)
+  }
+})
+
+// ── Val Town ─────────────────────────────────────────────────────────────────────────
+app.post('/valtown/:operation', async (c) => {
+  const op = c.req.param('operation')
+  const params = await c.req.json<Record<string, unknown>>()
+
+  const vtHeaders: Record<string, string> = {
+    Authorization: `Bearer ${c.env.VALTOWN_TOKEN}`,
+    'Content-Type': 'application/json',
+  }
+  const base = 'https://api.val.town'
+
+  try {
+    let data: unknown
+
+    if (op === 'me') {
+      const res = await fetch(`${base}/v1/me`, { headers: vtHeaders })
+      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
+      data = await res.json()
+
+    } else if (op === 'list_vals') {
+      const limit = (params.limit as number | undefined) || 20
+      const offset = (params.offset as number | undefined) || 0
+      const res = await fetch(`${base}/v1/me/vals?limit=${limit}&offset=${offset}`, { headers: vtHeaders })
+      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
+      data = await res.json()
+
+    } else if (op === 'create_val') {
+      const res = await fetch(`${base}/v1/vals`, {
+        method: 'POST',
+        headers: vtHeaders,
+        body: JSON.stringify({
+          name: params.name,
+          code: params.code,
+          type: params.type || 'http',
+          privacy: params.privacy || 'private',
+          readme: params.readme || '',
+        }),
+      })
+      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
+      data = await res.json()
+
+    } else if (op === 'get_val') {
+      const res = await fetch(`${base}/v1/vals/${params.val_id}`, { headers: vtHeaders })
+      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
+      data = await res.json()
+
+    } else if (op === 'update_val') {
+      const res = await fetch(`${base}/v1/vals/${params.val_id}/versions`, {
+        method: 'POST',
+        headers: vtHeaders,
+        body: JSON.stringify({
+          code: params.code,
+          type: params.type,
+        }),
+      })
+      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
+      data = await res.json()
+
+    } else if (op === 'delete_val') {
+      const res = await fetch(`${base}/v1/vals/${params.val_id}`, {
+        method: 'DELETE',
+        headers: vtHeaders,
+      })
+      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
+      data = { deleted: true }
+
+    } else if (op === 'run_val') {
+      const res = await fetch(`https://${params.username}-${params.val_name}.web.val.run`, {
+        method: (params.method as string | undefined) || 'GET',
+        headers: params.body ? { 'Content-Type': 'application/json' } : {},
+        body: params.body ? JSON.stringify(params.body) : undefined,
+      })
+      data = { status: res.status, body: await res.text() }
+
+    } else if (op === 'sqlite_execute') {
+      const res = await fetch(`${base}/v1/sqlite/execute`, {
+        method: 'POST',
+        headers: vtHeaders,
+        body: JSON.stringify({
+          statement: { sql: params.sql, args: params.args || [] },
+        }),
+      })
+      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
+      data = await res.json()
+
+    } else {
+      return c.json({ ok: false, error: `Unknown valtown operation: ${op}` }, 400)
     }
 
     return c.json({ ok: true, data })
