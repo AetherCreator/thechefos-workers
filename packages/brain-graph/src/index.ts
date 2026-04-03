@@ -2,11 +2,83 @@ import { Hono } from 'hono';
 import { runMigrations } from './schema';
 import { migrateBrainToD1 } from './migrate';
 import { buildNodeQuery, buildCountQuery, buildGraphQuery, NodeRow, ConnectionRow } from './queries';
-import { generateAndPushCognitiveCache } from './cognitive-cache';
+import { generateAndPushCognitiveCache, getFileContent, putFileContent } from './cognitive-cache';
+import { generateRule } from './rule-generator';
+import type { GraduatedPattern } from './rule-generator';
 
 export interface Env {
   BRAIN_DB: D1Database;
   GITHUB_TOKEN: string;
+}
+
+// ---------------------------------------------------------------------------
+// Instinct Pipeline Helpers (Hunt 7)
+// ---------------------------------------------------------------------------
+
+function suggestTargetRepos(domains: string[]): Array<{ repo: string; paths: string[] }> {
+  const targets: Array<{ repo: string; paths: string[] }> = [];
+  const seen = new Set<string>();
+
+  for (const domain of domains) {
+    let repo: string;
+    let paths: string[];
+
+    switch (domain) {
+      case 'chef':
+      case 'cooking':
+      case 'recipes':
+        repo = 'AetherCreator/chefos';
+        paths = ['src/**'];
+        break;
+      case 'gamedev':
+      case 'game-design':
+      case 'aether':
+        repo = 'AetherCreator/aether-chronicles';
+        paths = ['scripts/**'];
+        break;
+      case 'meta':
+      case 'system':
+      case 'workflow':
+        repo = 'AetherCreator/SuperClaude';
+        paths = ['**/*'];
+        break;
+      case 'infra':
+      case 'infrastructure':
+      case 'workers':
+        repo = 'AetherCreator/thechefos-workers';
+        paths = ['packages/**'];
+        break;
+      default:
+        repo = 'AetherCreator/SuperClaude';
+        paths = ['**/*'];
+        break;
+    }
+
+    if (!seen.has(repo)) {
+      seen.add(repo);
+      targets.push({ repo, paths });
+    }
+  }
+
+  return targets;
+}
+
+function buildSuggestedRuleText(name: string, domains: string[], nodes: NodeRow[]): string {
+  const nodeList = nodes.slice(0, 5).map((n) => `${n.title} (${n.domain})`).join(', ');
+  const principle = `Pattern "${name}" emerges across ${domains.join(', ')} domains, ` +
+    `suggesting a shared principle worth enforcing.`;
+  return [
+    `# Rule: ${name}`,
+    '',
+    '## Principle',
+    principle,
+    '',
+    '## Contributing Nodes',
+    nodeList,
+    '',
+    '## When This Applies',
+    `When working in ${domains.join(' or ')} domains where this pattern is relevant.`,
+  ].join('\n');
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -301,6 +373,135 @@ app.get('/patterns/scan', async (c) => {
   }
 });
 
+// GET /patterns/ready — graduation-ready candidates with full context
+// Graduation criteria: 3+ nodes, 2+ domains, all within 90 days, not already graduated
+app.get('/patterns/ready', async (c) => {
+  const db = c.env.BRAIN_DB;
+  try {
+    // Strategy 1: Check existing brain_patterns candidates
+    const existingCandidates = await db.prepare(
+      "SELECT * FROM brain_patterns WHERE status = 'candidate' ORDER BY first_seen DESC"
+    ).all<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string; graduated_at: string | null }>();
+
+    // Strategy 2: Dynamically detect patterns — types spanning 2+ domains with 3+ active nodes
+    const dynamicPatterns = await db.prepare(`
+      SELECT type,
+             COUNT(DISTINCT domain) as domain_count,
+             COUNT(*) as node_count,
+             GROUP_CONCAT(DISTINCT domain) as domains
+      FROM brain_nodes
+      WHERE updated_at >= date('now', '-90 days')
+      GROUP BY type
+      HAVING domain_count >= 2 AND node_count >= 3
+      ORDER BY domain_count DESC, node_count DESC
+    `).all<{ type: string; domain_count: number; node_count: number; domains: string }>();
+
+    const candidates: Array<{
+      pattern_id: string;
+      name: string;
+      description: string;
+      source: string;
+      domains: string[];
+      domain_count: number;
+      contributing_nodes: Array<{ id: string; title: string; domain: string; type: string; updated_at: string }>;
+      node_count: number;
+      suggested_rule_text: string;
+      suggested_target_repos: Array<{ repo: string; paths: string[] }>;
+      first_seen: string;
+    }> = [];
+
+    // Process existing candidates from brain_patterns
+    for (const pattern of existingCandidates.results) {
+      const nodeIds = JSON.parse(pattern.node_ids || '[]') as string[];
+      const domains = JSON.parse(pattern.domains || '[]') as string[];
+
+      if (domains.length < 2) continue;
+
+      // Fetch contributing nodes (only active within 90 days)
+      let nodes: NodeRow[] = [];
+      if (nodeIds.length > 0) {
+        const placeholders = nodeIds.map(() => '?').join(',');
+        const result = await db.prepare(
+          `SELECT * FROM brain_nodes WHERE id IN (${placeholders}) AND updated_at >= date('now', '-90 days')`
+        ).bind(...nodeIds).all<NodeRow>();
+        nodes = result.results;
+      }
+
+      if (nodes.length < 3) continue;
+
+      candidates.push({
+        pattern_id: pattern.id,
+        name: pattern.name,
+        description: `Cross-domain pattern spanning ${domains.join(', ')}`,
+        source: 'brain_patterns',
+        domains,
+        domain_count: domains.length,
+        contributing_nodes: nodes.map((n) => ({
+          id: n.id, title: n.title, domain: n.domain, type: n.type, updated_at: n.updated_at,
+        })),
+        node_count: nodes.length,
+        suggested_rule_text: buildSuggestedRuleText(pattern.name, domains, nodes),
+        suggested_target_repos: suggestTargetRepos(domains),
+        first_seen: pattern.first_seen,
+      });
+    }
+
+    // Process dynamically detected patterns
+    for (const row of dynamicPatterns.results) {
+      const patternId = `pattern-cross-domain-${row.type.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+      // Skip if already in candidates or already graduated
+      if (candidates.some((c) => c.pattern_id === patternId)) continue;
+      const graduated = await db.prepare(
+        "SELECT id FROM brain_patterns WHERE id = ? AND status = 'graduated'"
+      ).bind(patternId).first();
+      if (graduated) continue;
+
+      const domains = row.domains.split(',');
+
+      const nodesResult = await db.prepare(`
+        SELECT * FROM brain_nodes
+        WHERE type = ? AND updated_at >= date('now', '-90 days')
+        ORDER BY connection_count DESC LIMIT 20
+      `).bind(row.type).all<NodeRow>();
+
+      const nodes = nodesResult.results;
+      if (nodes.length < 3) continue;
+
+      const name = `cross-domain-${row.type}`;
+
+      candidates.push({
+        pattern_id: patternId,
+        name,
+        description: `${row.type} nodes span ${domains.join(', ')} (${nodes.length} active nodes)`,
+        source: 'dynamic_scan',
+        domains,
+        domain_count: row.domain_count,
+        contributing_nodes: nodes.map((n) => ({
+          id: n.id, title: n.title, domain: n.domain, type: n.type, updated_at: n.updated_at,
+        })),
+        node_count: nodes.length,
+        suggested_rule_text: buildSuggestedRuleText(name, domains, nodes),
+        suggested_target_repos: suggestTargetRepos(domains),
+        first_seen: new Date().toISOString(),
+      });
+    }
+
+    return c.json({
+      candidates,
+      total: candidates.length,
+      graduation_criteria: {
+        min_nodes: 3,
+        min_domains: 2,
+        max_age_days: 90,
+      },
+      scanned_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // POST /patterns/graduate — promote a candidate pattern to graduated
 app.post('/patterns/graduate', async (c) => {
   const db = c.env.BRAIN_DB;
@@ -353,6 +554,276 @@ app.post('/patterns/graduate', async (c) => {
         status: 'graduated',
         graduated_at: now,
       },
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Instinct Pipeline: Approval Gate + Push (Hunt 7, Clue 3)
+// ---------------------------------------------------------------------------
+
+// GET /instinct/pending — graduation-ready patterns with generated rule previews
+// This is what Tyler reviews before approving. NO auto-push.
+app.get('/instinct/pending', async (c) => {
+  const db = c.env.BRAIN_DB;
+  try {
+    // Reuse the /patterns/ready logic to find candidates
+    const existingCandidates = await db.prepare(
+      "SELECT * FROM brain_patterns WHERE status = 'candidate' ORDER BY first_seen DESC"
+    ).all<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string; graduated_at: string | null }>();
+
+    const dynamicPatterns = await db.prepare(`
+      SELECT type,
+             COUNT(DISTINCT domain) as domain_count,
+             COUNT(*) as node_count,
+             GROUP_CONCAT(DISTINCT domain) as domains
+      FROM brain_nodes
+      WHERE updated_at >= date('now', '-90 days')
+      GROUP BY type
+      HAVING domain_count >= 2 AND node_count >= 3
+      ORDER BY domain_count DESC, node_count DESC
+    `).all<{ type: string; domain_count: number; node_count: number; domains: string }>();
+
+    const pending: Array<{
+      pattern_id: string;
+      name: string;
+      domains: string[];
+      node_count: number;
+      rule_previews: Array<{ filename: string; content: string; target_repo: string; target_path: string }>;
+    }> = [];
+
+    // Process existing candidates
+    for (const pattern of existingCandidates.results) {
+      const nodeIds = JSON.parse(pattern.node_ids || '[]') as string[];
+      const domains = JSON.parse(pattern.domains || '[]') as string[];
+      if (domains.length < 2) continue;
+
+      let nodes: NodeRow[] = [];
+      if (nodeIds.length > 0) {
+        const placeholders = nodeIds.map(() => '?').join(',');
+        const result = await db.prepare(
+          `SELECT * FROM brain_nodes WHERE id IN (${placeholders}) AND updated_at >= date('now', '-90 days')`
+        ).bind(...nodeIds).all<NodeRow>();
+        nodes = result.results;
+      }
+      if (nodes.length < 3) continue;
+
+      const graduated: GraduatedPattern = {
+        pattern_id: pattern.id,
+        name: pattern.name,
+        description: `Cross-domain pattern spanning ${domains.join(', ')}`,
+        domains,
+        contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
+      };
+
+      const ruleFiles = generateRule(graduated);
+
+      pending.push({
+        pattern_id: pattern.id,
+        name: pattern.name,
+        domains,
+        node_count: nodes.length,
+        rule_previews: ruleFiles,
+      });
+    }
+
+    // Process dynamic patterns
+    for (const row of dynamicPatterns.results) {
+      const patternId = `pattern-cross-domain-${row.type.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+      if (pending.some((p) => p.pattern_id === patternId)) continue;
+
+      const graduated = await db.prepare(
+        "SELECT id FROM brain_patterns WHERE id = ? AND status = 'graduated'"
+      ).bind(patternId).first();
+      if (graduated) continue;
+
+      const domains = row.domains.split(',');
+      const nodesResult = await db.prepare(`
+        SELECT * FROM brain_nodes
+        WHERE type = ? AND updated_at >= date('now', '-90 days')
+        ORDER BY connection_count DESC LIMIT 20
+      `).bind(row.type).all<NodeRow>();
+
+      const nodes = nodesResult.results;
+      if (nodes.length < 3) continue;
+
+      const name = `cross-domain-${row.type}`;
+      const graduatedPattern: GraduatedPattern = {
+        pattern_id: patternId,
+        name,
+        description: `${row.type} nodes span ${domains.join(', ')}`,
+        domains,
+        contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
+      };
+
+      const ruleFiles = generateRule(graduatedPattern);
+
+      pending.push({
+        pattern_id: patternId,
+        name,
+        domains,
+        node_count: nodes.length,
+        rule_previews: ruleFiles,
+      });
+    }
+
+    return c.json({
+      pending,
+      total: pending.length,
+      message: pending.length > 0
+        ? `${pending.length} pattern(s) ready for graduation — review rule previews and POST /instinct/graduate to approve or reject.`
+        : 'No patterns currently meet graduation criteria.',
+      scanned_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// POST /instinct/graduate — approve or reject a pattern
+// Body: { pattern_id, approved: boolean, target_repo?, rule_path?, edits? }
+// If approved: push rule file to target repo's .claude/rules/ via GitHub API
+// If rejected: archive the pattern in D1
+app.post('/instinct/graduate', async (c) => {
+  const db = c.env.BRAIN_DB;
+  const token = c.env.GITHUB_TOKEN;
+
+  try {
+    const body = await c.req.json<{
+      pattern_id: string;
+      approved: boolean;
+      target_repo?: string;
+      rule_path?: string;
+      edits?: string; // Tyler's edited rule content
+    }>();
+
+    if (!body.pattern_id) {
+      return c.json({ error: 'pattern_id is required' }, 400);
+    }
+
+    const now = new Date().toISOString();
+
+    // --- REJECTION PATH ---
+    if (!body.approved) {
+      // Check if pattern exists in brain_patterns
+      const existing = await db.prepare('SELECT id FROM brain_patterns WHERE id = ?')
+        .bind(body.pattern_id).first();
+
+      if (existing) {
+        await db.prepare(
+          "UPDATE brain_patterns SET status = 'archived', graduated_at = ? WHERE id = ?"
+        ).bind(now, body.pattern_id).run();
+      } else {
+        // Insert as archived so it doesn't resurface
+        await db.prepare(
+          `INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at)
+           VALUES (?, ?, '[]', '[]', 'archived', ?, ?)`
+        ).bind(body.pattern_id, body.pattern_id, now, now).run();
+      }
+
+      return c.json({
+        success: true,
+        action: 'archived',
+        pattern_id: body.pattern_id,
+        archived_at: now,
+      });
+    }
+
+    // --- APPROVAL PATH ---
+    if (!token) {
+      return c.json({ error: 'GITHUB_TOKEN not configured — cannot push rule files' }, 500);
+    }
+
+    // Find the pattern and generate rule files
+    const patternRow = await db.prepare('SELECT * FROM brain_patterns WHERE id = ?')
+      .bind(body.pattern_id)
+      .first<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string }>();
+
+    let ruleFiles: Array<{ filename: string; content: string; target_repo: string; target_path: string }>;
+
+    if (body.edits && body.target_repo && body.rule_path) {
+      // Tyler provided edited content — use that directly
+      ruleFiles = [{
+        filename: body.rule_path.split('/').pop() || 'instinct-rule.md',
+        content: body.edits,
+        target_repo: body.target_repo,
+        target_path: body.rule_path,
+      }];
+    } else if (patternRow) {
+      // Generate from pattern data
+      const nodeIds = JSON.parse(patternRow.node_ids || '[]') as string[];
+      const domains = JSON.parse(patternRow.domains || '[]') as string[];
+
+      let nodes: NodeRow[] = [];
+      if (nodeIds.length > 0) {
+        const placeholders = nodeIds.map(() => '?').join(',');
+        const result = await db.prepare(
+          `SELECT * FROM brain_nodes WHERE id IN (${placeholders})`
+        ).bind(...nodeIds).all<NodeRow>();
+        nodes = result.results;
+      }
+
+      const graduated: GraduatedPattern = {
+        pattern_id: patternRow.id,
+        name: patternRow.name,
+        description: `Cross-domain pattern spanning ${domains.join(', ')}`,
+        domains,
+        contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
+      };
+
+      ruleFiles = generateRule(graduated);
+
+      // If target_repo specified, filter to just that repo
+      if (body.target_repo) {
+        ruleFiles = ruleFiles.filter((r) => r.target_repo === body.target_repo);
+      }
+    } else {
+      return c.json({ error: `Pattern ${body.pattern_id} not found in brain_patterns` }, 404);
+    }
+
+    // Push each rule file to its target repo via GitHub API
+    const pushResults: Array<{ repo: string; path: string; success: boolean; sha?: string; error?: string }> = [];
+
+    for (const rule of ruleFiles) {
+      try {
+        // Check if file already exists (SHA-based update for safety)
+        const existing = await getFileContent(token, rule.target_repo, rule.target_path);
+        const sha = existing?.sha || null;
+
+        const commitMsg = `chore: graduate instinct rule — ${rule.filename} (${now.split('T')[0]})`;
+        const newSha = await putFileContent(token, rule.target_repo, rule.target_path, rule.content, sha, commitMsg);
+
+        pushResults.push({ repo: rule.target_repo, path: rule.target_path, success: true, sha: newSha });
+      } catch (e) {
+        pushResults.push({ repo: rule.target_repo, path: rule.target_path, success: false, error: (e as Error).message });
+      }
+    }
+
+    // Update pattern status in D1
+    const existingPattern = await db.prepare('SELECT id FROM brain_patterns WHERE id = ?')
+      .bind(body.pattern_id).first();
+
+    if (existingPattern) {
+      await db.prepare(
+        "UPDATE brain_patterns SET status = 'graduated', graduated_at = ? WHERE id = ?"
+      ).bind(now, body.pattern_id).run();
+    } else {
+      await db.prepare(
+        `INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at)
+         VALUES (?, ?, '[]', '[]', 'graduated', ?, ?)`
+      ).bind(body.pattern_id, body.pattern_id, now, now).run();
+    }
+
+    return c.json({
+      success: true,
+      action: 'graduated',
+      pattern_id: body.pattern_id,
+      graduated_at: now,
+      push_results: pushResults,
+      rules_pushed: pushResults.filter((r) => r.success).length,
+      rules_failed: pushResults.filter((r) => !r.success).length,
     });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
