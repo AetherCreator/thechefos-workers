@@ -76,9 +76,14 @@ app.post('/github/:operation', async (c) => {
       if (!res.ok) throw new Error(`GitHub ${res.status}: ${await res.text()}`)
       data = await res.json()
     } else if (op === 'merge_branch') {
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/merges`, { method: 'POST', headers: ghHeaders, body: JSON.stringify({ base: params.base, head: params.head, commit_message: params.message }) })
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/merges`, {
+        method: 'POST',
+        headers: ghHeaders,
+        body: JSON.stringify({ base: params.base, head: params.head, commit_message: params.message }),
+      })
       if (!res.ok) throw new Error(`GitHub ${res.status}: ${await res.text()}`)
-      data = await res.json()
+      // 204 = already up to date (no body), 201 = new merge commit with body
+      data = res.status === 204 ? { merged: true, sha: null, message: 'Already up to date' } : await res.json()
     } else if (op === 'list_commits') {
       const perPage = (params.per_page as number | undefined) || 20
       const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=${perPage}`, { headers: ghHeaders })
@@ -137,6 +142,22 @@ app.post('/cloudflare/:operation', async (c) => {
       data = await res.json()
     } else if (op === 'get_account') {
       const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}`, { headers: cfHeaders })
+      if (!res.ok) throw new Error(`CF ${res.status}: ${await res.text()}`)
+      data = await res.json()
+    } else if (op === 'secret_set') {
+      // Set or update a Worker secret — used for token rotation across all Workers
+      // params: { script_name: string, secret_name: string, secret_value: string }
+      const scriptName = params.script_name as string
+      const secretName = params.secret_name as string
+      const secretValue = params.secret_value as string
+      if (!scriptName || !secretName || !secretValue) {
+        throw new Error('secret_set requires script_name, secret_name, and secret_value')
+      }
+      const res = await fetch(`${base}/workers/scripts/${scriptName}/secrets`, {
+        method: 'PUT',
+        headers: cfHeaders,
+        body: JSON.stringify({ name: secretName, text: secretValue, type: 'secret_text' }),
+      })
       if (!res.ok) throw new Error(`CF ${res.status}: ${await res.text()}`)
       data = await res.json()
     } else {
