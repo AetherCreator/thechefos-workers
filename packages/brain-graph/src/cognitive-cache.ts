@@ -210,7 +210,7 @@ const TARGET_REPOS = [
 const START_MARKER = '<!-- COGNITIVE-CACHE-START -->';
 const END_MARKER = '<!-- COGNITIVE-CACHE-END -->';
 
-async function getFileContent(
+export async function getFileContent(
   token: string,
   repo: string,
   path: string
@@ -231,7 +231,7 @@ async function getFileContent(
   return { content, sha: data.sha };
 }
 
-async function putFileContent(
+export async function putFileContent(
   token: string,
   repo: string,
   path: string,
