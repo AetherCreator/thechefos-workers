@@ -51,15 +51,16 @@ app.all('/api/brain/search', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api
 app.all('/api/brain/search/*', (c) => forward(c.req.raw, c.env.BRAIN_SEARCH, '/api/brain/search'))
 
 // Session odometer (brain-graph D1)
-app.get('/api/session/odometer', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
-app.post('/api/session/odometer/weekly-reset', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+// fix: prefix must be '/api' so BRAIN_GRAPH receives '/session/odometer' (not a garbled slice)
+app.get('/api/session/odometer', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
+app.post('/api/session/odometer/weekly-reset', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
 
 // Session usage tracking (brain-graph D1)
-app.post('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
-app.get('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
-app.get('/api/session/usage/summary', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain/graph'))
+app.post('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
+app.get('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
+app.get('/api/session/usage/summary', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
 
-// Brain session state (brain-write)
+// Brain session state (brain-write) — catch-all must come AFTER specific session routes above
 app.all('/api/session/*', (c) => forward(c.req.raw, c.env.BRAIN_WRITE, '/api/session'))
 
 // Brain write webhook (catch-all for /api/brain/*)
@@ -84,7 +85,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/graduate', '/api/brain/ops/vitals', '/api/brain/graph', '/api/brain/search', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/graduate', '/api/brain/ops/vitals', '/api/brain/graph', '/api/brain/search', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app
