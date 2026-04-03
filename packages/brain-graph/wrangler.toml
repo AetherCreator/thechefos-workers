@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-03-01"
 
 [triggers]
-crons = ["0 5 * * 1"]
+crons = ["0 5 * * 1", "0 6 * * *"]
 
 [[d1_databases]]
 binding = "BRAIN_DB"
