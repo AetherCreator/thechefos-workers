@@ -9,6 +9,76 @@ export interface Env {
   GITHUB_TOKEN: string;
 }
 
+// ---------------------------------------------------------------------------
+// Instinct Pipeline Helpers (Hunt 7)
+// ---------------------------------------------------------------------------
+
+function suggestTargetRepos(domains: string[]): Array<{ repo: string; paths: string[] }> {
+  const targets: Array<{ repo: string; paths: string[] }> = [];
+  const seen = new Set<string>();
+
+  for (const domain of domains) {
+    let repo: string;
+    let paths: string[];
+
+    switch (domain) {
+      case 'chef':
+      case 'cooking':
+      case 'recipes':
+        repo = 'AetherCreator/chefos';
+        paths = ['src/**'];
+        break;
+      case 'gamedev':
+      case 'game-design':
+      case 'aether':
+        repo = 'AetherCreator/aether-chronicles';
+        paths = ['scripts/**'];
+        break;
+      case 'meta':
+      case 'system':
+      case 'workflow':
+        repo = 'AetherCreator/SuperClaude';
+        paths = ['**/*'];
+        break;
+      case 'infra':
+      case 'infrastructure':
+      case 'workers':
+        repo = 'AetherCreator/thechefos-workers';
+        paths = ['packages/**'];
+        break;
+      default:
+        repo = 'AetherCreator/SuperClaude';
+        paths = ['**/*'];
+        break;
+    }
+
+    if (!seen.has(repo)) {
+      seen.add(repo);
+      targets.push({ repo, paths });
+    }
+  }
+
+  return targets;
+}
+
+function buildSuggestedRuleText(name: string, domains: string[], nodes: NodeRow[]): string {
+  const nodeList = nodes.slice(0, 5).map((n) => `${n.title} (${n.domain})`).join(', ');
+  const principle = `Pattern "${name}" emerges across ${domains.join(', ')} domains, ` +
+    `suggesting a shared principle worth enforcing.`;
+  return [
+    `# Rule: ${name}`,
+    '',
+    '## Principle',
+    principle,
+    '',
+    '## Contributing Nodes',
+    nodeList,
+    '',
+    '## When This Applies',
+    `When working in ${domains.join(' or ')} domains where this pattern is relevant.`,
+  ].join('\n');
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // CORS — allow Claude.ai artifacts, web_fetch, and all browser origins
@@ -294,6 +364,135 @@ app.get('/patterns/scan', async (c) => {
       })),
       graduated_count: graduatedResult?.count || 0,
       total_nodes_scanned: totalResult?.total || 0,
+      scanned_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// GET /patterns/ready — graduation-ready candidates with full context
+// Graduation criteria: 3+ nodes, 2+ domains, all within 90 days, not already graduated
+app.get('/patterns/ready', async (c) => {
+  const db = c.env.BRAIN_DB;
+  try {
+    // Strategy 1: Check existing brain_patterns candidates
+    const existingCandidates = await db.prepare(
+      "SELECT * FROM brain_patterns WHERE status = 'candidate' ORDER BY first_seen DESC"
+    ).all<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string; graduated_at: string | null }>();
+
+    // Strategy 2: Dynamically detect patterns — types spanning 2+ domains with 3+ active nodes
+    const dynamicPatterns = await db.prepare(`
+      SELECT type,
+             COUNT(DISTINCT domain) as domain_count,
+             COUNT(*) as node_count,
+             GROUP_CONCAT(DISTINCT domain) as domains
+      FROM brain_nodes
+      WHERE updated_at >= date('now', '-90 days')
+      GROUP BY type
+      HAVING domain_count >= 2 AND node_count >= 3
+      ORDER BY domain_count DESC, node_count DESC
+    `).all<{ type: string; domain_count: number; node_count: number; domains: string }>();
+
+    const candidates: Array<{
+      pattern_id: string;
+      name: string;
+      description: string;
+      source: string;
+      domains: string[];
+      domain_count: number;
+      contributing_nodes: Array<{ id: string; title: string; domain: string; type: string; updated_at: string }>;
+      node_count: number;
+      suggested_rule_text: string;
+      suggested_target_repos: Array<{ repo: string; paths: string[] }>;
+      first_seen: string;
+    }> = [];
+
+    // Process existing candidates from brain_patterns
+    for (const pattern of existingCandidates.results) {
+      const nodeIds = JSON.parse(pattern.node_ids || '[]') as string[];
+      const domains = JSON.parse(pattern.domains || '[]') as string[];
+
+      if (domains.length < 2) continue;
+
+      // Fetch contributing nodes (only active within 90 days)
+      let nodes: NodeRow[] = [];
+      if (nodeIds.length > 0) {
+        const placeholders = nodeIds.map(() => '?').join(',');
+        const result = await db.prepare(
+          `SELECT * FROM brain_nodes WHERE id IN (${placeholders}) AND updated_at >= date('now', '-90 days')`
+        ).bind(...nodeIds).all<NodeRow>();
+        nodes = result.results;
+      }
+
+      if (nodes.length < 3) continue;
+
+      candidates.push({
+        pattern_id: pattern.id,
+        name: pattern.name,
+        description: `Cross-domain pattern spanning ${domains.join(', ')}`,
+        source: 'brain_patterns',
+        domains,
+        domain_count: domains.length,
+        contributing_nodes: nodes.map((n) => ({
+          id: n.id, title: n.title, domain: n.domain, type: n.type, updated_at: n.updated_at,
+        })),
+        node_count: nodes.length,
+        suggested_rule_text: buildSuggestedRuleText(pattern.name, domains, nodes),
+        suggested_target_repos: suggestTargetRepos(domains),
+        first_seen: pattern.first_seen,
+      });
+    }
+
+    // Process dynamically detected patterns
+    for (const row of dynamicPatterns.results) {
+      const patternId = `pattern-cross-domain-${row.type.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+      // Skip if already in candidates or already graduated
+      if (candidates.some((c) => c.pattern_id === patternId)) continue;
+      const graduated = await db.prepare(
+        "SELECT id FROM brain_patterns WHERE id = ? AND status = 'graduated'"
+      ).bind(patternId).first();
+      if (graduated) continue;
+
+      const domains = row.domains.split(',');
+
+      const nodesResult = await db.prepare(`
+        SELECT * FROM brain_nodes
+        WHERE type = ? AND updated_at >= date('now', '-90 days')
+        ORDER BY connection_count DESC LIMIT 20
+      `).bind(row.type).all<NodeRow>();
+
+      const nodes = nodesResult.results;
+      if (nodes.length < 3) continue;
+
+      const name = `cross-domain-${row.type}`;
+
+      candidates.push({
+        pattern_id: patternId,
+        name,
+        description: `${row.type} nodes span ${domains.join(', ')} (${nodes.length} active nodes)`,
+        source: 'dynamic_scan',
+        domains,
+        domain_count: row.domain_count,
+        contributing_nodes: nodes.map((n) => ({
+          id: n.id, title: n.title, domain: n.domain, type: n.type, updated_at: n.updated_at,
+        })),
+        node_count: nodes.length,
+        suggested_rule_text: buildSuggestedRuleText(name, domains, nodes),
+        suggested_target_repos: suggestTargetRepos(domains),
+        first_seen: new Date().toISOString(),
+      });
+    }
+
+    return c.json({
+      candidates,
+      total: candidates.length,
+      graduation_criteria: {
+        min_nodes: 3,
+        min_domains: 2,
+        max_age_days: 90,
+      },
       scanned_at: new Date().toISOString(),
     });
   } catch (e) {
