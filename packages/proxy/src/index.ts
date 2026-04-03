@@ -440,7 +440,7 @@ app.post('/gmail/:operation', async (c) => {
   }
 })
 
-// ── Val Town ─────────────────────────────────────────────────────────────────────────
+// ── Val Town (v2 API) ────────────────────────────────────────────────────────────────
 app.post('/valtown/:operation', async (c) => {
   const op = c.req.param('operation')
   const params = await c.req.json<Record<string, unknown>>()
@@ -455,43 +455,64 @@ app.post('/valtown/:operation', async (c) => {
     let data: unknown
 
     if (op === 'me') {
-      const res = await fetch(`${base}/v1/me`, { headers: vtHeaders })
+      const res = await fetch(`${base}/v2/me`, { headers: vtHeaders })
       if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
       data = await res.json()
 
     } else if (op === 'list_vals') {
       const limit = (params.limit as number | undefined) || 20
       const offset = (params.offset as number | undefined) || 0
-      const res = await fetch(`${base}/v1/me/vals?limit=${limit}&offset=${offset}`, { headers: vtHeaders })
+      const res = await fetch(`${base}/v2/me/vals?limit=${limit}&offset=${offset}`, { headers: vtHeaders })
       if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
       data = await res.json()
 
     } else if (op === 'create_val') {
-      const res = await fetch(`${base}/v1/vals`, {
+      // v2 two-step: create val shell, then add main file with code
+      const createRes = await fetch(`${base}/v2/vals`, {
         method: 'POST',
         headers: vtHeaders,
         body: JSON.stringify({
           name: params.name,
-          code: params.code,
-          type: params.type || 'http',
           privacy: params.privacy || 'private',
-          readme: params.readme || '',
+          description: params.readme || '',
         }),
       })
-      if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
-      data = await res.json()
+      if (!createRes.ok) throw new Error(`ValTown create ${createRes.status}: ${await createRes.text()}`)
+      const val = await createRes.json() as { id: string }
+
+      // Add main file with code and trigger type
+      const fileType = params.type || 'http'
+      const fileRes = await fetch(`${base}/v2/vals/${val.id}/files`, {
+        method: 'POST',
+        headers: vtHeaders,
+        body: JSON.stringify({
+          name: 'index.ts',
+          content: params.code,
+          type: fileType,
+        }),
+      })
+      if (!fileRes.ok) {
+        // Try to clean up the empty val if file creation fails
+        const errText = await fileRes.text()
+        await fetch(`${base}/v2/vals/${val.id}`, { method: 'DELETE', headers: vtHeaders }).catch(() => {})
+        throw new Error(`ValTown file create ${fileRes.status}: ${errText}`)
+      }
+      const file = await fileRes.json()
+      data = { val, file }
 
     } else if (op === 'get_val') {
-      const res = await fetch(`${base}/v1/vals/${params.val_id}`, { headers: vtHeaders })
+      const res = await fetch(`${base}/v2/vals/${params.val_id}`, { headers: vtHeaders })
       if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
       data = await res.json()
 
     } else if (op === 'update_val') {
-      const res = await fetch(`${base}/v1/vals/${params.val_id}/versions`, {
-        method: 'POST',
+      // v2: update main file content via PUT
+      const res = await fetch(`${base}/v2/vals/${params.val_id}/files`, {
+        method: 'PUT',
         headers: vtHeaders,
         body: JSON.stringify({
-          code: params.code,
+          path: 'index.ts',
+          content: params.code,
           type: params.type,
         }),
       })
@@ -499,7 +520,7 @@ app.post('/valtown/:operation', async (c) => {
       data = await res.json()
 
     } else if (op === 'delete_val') {
-      const res = await fetch(`${base}/v1/vals/${params.val_id}`, {
+      const res = await fetch(`${base}/v2/vals/${params.val_id}`, {
         method: 'DELETE',
         headers: vtHeaders,
       })
@@ -515,7 +536,7 @@ app.post('/valtown/:operation', async (c) => {
       data = { status: res.status, body: await res.text() }
 
     } else if (op === 'sqlite_execute') {
-      const res = await fetch(`${base}/v1/sqlite/execute`, {
+      const res = await fetch(`${base}/v2/sqlite/execute`, {
         method: 'POST',
         headers: vtHeaders,
         body: JSON.stringify({
