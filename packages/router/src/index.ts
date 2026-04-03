@@ -43,6 +43,11 @@ app.post('/api/brain/patterns/graduate', (c) => forward(c.req.raw, c.env.BRAIN_G
 // OPS vitals — convenience route to brain-graph (clue 7)
 app.get('/api/brain/ops/vitals', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain'))
 
+// Instinct pipeline — pattern graduation + rule push (instinct-pipeline hunt)
+app.get('/api/brain/patterns/ready', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain'))
+app.get('/api/brain/instinct/pending', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain'))
+app.post('/api/brain/instinct/graduate', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain'))
+
 // Cognitive cache — generate and push to all repos (cognitive-cache hunt)
 app.post('/api/brain/cognitive-cache/generate', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api/brain'))
 
@@ -91,7 +96,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app
