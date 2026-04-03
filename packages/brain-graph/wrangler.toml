@@ -2,6 +2,9 @@ name = "superclaude-brain-graph"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
 
+# GITHUB_TOKEN must be set as a Cloudflare Worker Secret (not plaintext)
+# Set via: Cloudflare Dashboard → superclaude-brain-graph → Settings → Variables and Secrets → Add Secret
+
 [triggers]
 crons = ["0 5 * * 1", "0 6 * * *"]
 
