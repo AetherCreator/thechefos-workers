@@ -3,6 +3,7 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { createEnrichedProxyCall, SKIP_ENRICHMENT } from "./enrich";
 
 export interface Env {
   GITHUB_TOKEN: string;
@@ -143,6 +144,17 @@ export class TheChefOSMCP extends McpAgent<Env> {
       return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
     };
 
+    // Brain-enriched proxy call — wraps proxyCall with Vectorize context
+    const enriched = createEnrichedProxyCall(proxyCall);
+
+    // Helper: use enriched or raw proxyCall based on tool name
+    const callFor = (toolName: string) =>
+      SKIP_ENRICHMENT.has(toolName)
+        ? (service: string, op: string, params: Record<string, unknown>) =>
+            proxyCall(service, op, params)
+        : (service: string, op: string, params: Record<string, unknown>) =>
+            enriched(toolName, service, op, params);
+
     // ── GitHub Tools ──────────────────────────────────────────────────────
 
     this.server.tool(
@@ -154,7 +166,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         branch: z.string().default("main").describe("Branch name"),
       },
       async ({ repo, path, branch }) =>
-        proxyCall("github", "get_file", { repo, path, branch })
+        callFor("github_get_file")("github", "get_file", { repo, path, branch })
     );
 
     this.server.tool(
@@ -169,7 +181,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         branch: z.string().default("main").describe("Target branch"),
       },
       async ({ repo, path, content, message, sha, branch }) =>
-        proxyCall("github", "put_file", { repo, path, content, message, sha, branch })
+        callFor("github_put_file")("github", "put_file", { repo, path, content, message, sha, branch })
     );
 
     this.server.tool(
@@ -181,7 +193,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         branch: z.string().default("main").describe("Branch name"),
       },
       async ({ repo, path, branch }) =>
-        proxyCall("github", "list_dir", { repo, path, branch })
+        callFor("github_list_dir")("github", "list_dir", { repo, path, branch })
     );
 
     this.server.tool(
@@ -192,7 +204,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         branch: z.string().default("main").describe("Branch name"),
       },
       async ({ repo, branch }) =>
-        proxyCall("github", "get_repo_tree", { repo, branch })
+        callFor("github_repo_tree")("github", "get_repo_tree", { repo, branch })
     );
 
     this.server.tool(
@@ -202,7 +214,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         repo: z.string().describe('Repository name'),
       },
       async ({ repo }) =>
-        proxyCall("github", "list_branches", { repo })
+        callFor("github_list_branches")("github", "list_branches", { repo })
     );
 
     this.server.tool(
@@ -215,7 +227,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         message: z.string().describe("PR title"),
       },
       async ({ repo, head, base, message }) =>
-        proxyCall("github", "create_pr", { repo, head, base, message })
+        callFor("github_create_pr")("github", "create_pr", { repo, head, base, message })
     );
 
     this.server.tool(
@@ -228,7 +240,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         message: z.string().describe("Merge commit message"),
       },
       async ({ repo, head, base, message }) =>
-        proxyCall("github", "merge_branch", { repo, head, base, message })
+        callFor("github_merge_branch")("github", "merge_branch", { repo, head, base, message })
     );
 
     this.server.tool(
@@ -240,7 +252,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         per_page: z.number().default(20).describe("Number of commits to return"),
       },
       async ({ repo, branch, per_page }) =>
-        proxyCall("github", "list_commits", { repo, branch, per_page })
+        callFor("github_list_commits")("github", "list_commits", { repo, branch, per_page })
     );
 
     this.server.tool(
@@ -251,7 +263,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         per_page: z.number().default(10).describe("Number of runs to return"),
       },
       async ({ repo, per_page }) =>
-        proxyCall("github", "get_actions_runs", { repo, per_page })
+        callFor("github_actions_runs")("github", "get_actions_runs", { repo, per_page })
     );
 
     // ── Cloudflare Tools ──────────────────────────────────────────────────
@@ -260,7 +272,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
       "cf_workers_list",
       "List all deployed Cloudflare Workers",
       {},
-      async () => proxyCall("cloudflare", "workers_list", {})
+      async () => callFor("cf_workers_list")("cloudflare", "workers_list", {})
     );
 
     this.server.tool(
@@ -272,7 +284,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         params: z.array(z.unknown()).default([]).describe("Query parameters"),
       },
       async ({ database_id, sql, params }) =>
-        proxyCall("cloudflare", "d1_query", { database_id, sql, params })
+        callFor("cf_d1_query")("cloudflare", "d1_query", { database_id, sql, params })
     );
 
     this.server.tool(
@@ -283,7 +295,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         key: z.string().describe("Key to read"),
       },
       async ({ namespace_id, key }) =>
-        proxyCall("cloudflare", "kv_get", { namespace_id, key })
+        callFor("cf_kv_get")("cloudflare", "kv_get", { namespace_id, key })
     );
 
     this.server.tool(
@@ -295,7 +307,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         value: z.string().describe("Value to store"),
       },
       async ({ namespace_id, key, value }) =>
-        proxyCall("cloudflare", "kv_set", { namespace_id, key, value })
+        callFor("cf_kv_set")("cloudflare", "kv_set", { namespace_id, key, value })
     );
 
     this.server.tool(
@@ -305,7 +317,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         namespace_id: z.string().describe("KV namespace ID"),
       },
       async ({ namespace_id }) =>
-        proxyCall("cloudflare", "kv_list", { namespace_id })
+        callFor("cf_kv_list")("cloudflare", "kv_list", { namespace_id })
     );
 
     // ── Vercel Tools ──────────────────────────────────────────────────────
@@ -317,7 +329,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
       },
       async ({ team_id }) =>
-        proxyCall("vercel", "list_projects", { team_id })
+        callFor("vercel_list_projects")("vercel", "list_projects", { team_id })
     );
 
     this.server.tool(
@@ -328,7 +340,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         project_id: z.string().optional().describe("Filter to specific project ID"),
       },
       async ({ team_id, project_id }) =>
-        proxyCall("vercel", "list_deployments", { team_id, project_id })
+        callFor("vercel_list_deployments")("vercel", "list_deployments", { team_id, project_id })
     );
 
     this.server.tool(
@@ -339,7 +351,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         deployment_id: z.string().describe("Deployment ID"),
       },
       async ({ team_id, deployment_id }) =>
-        proxyCall("vercel", "get_deployment", { team_id, deployment_id })
+        callFor("vercel_get_deployment")("vercel", "get_deployment", { team_id, deployment_id })
     );
 
     this.server.tool(
@@ -351,7 +363,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         since: z.number().optional().describe("Unix timestamp — defaults to last hour"),
       },
       async ({ team_id, deployment_id, since }) =>
-        proxyCall("vercel", "get_runtime_logs", { team_id, deployment_id, since })
+        callFor("vercel_runtime_logs")("vercel", "get_runtime_logs", { team_id, deployment_id, since })
     );
 
     // ── Calendar Tools ────────────────────────────────────────────────────
@@ -360,7 +372,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
       "calendar_list",
       "List all available Google Calendars",
       {},
-      async () => proxyCall("calendar", "list_calendars", {})
+      async () => callFor("calendar_list")("calendar", "list_calendars", {})
     );
 
     this.server.tool(
@@ -373,7 +385,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         query: z.string().optional().describe("Search query to filter events"),
       },
       async ({ calendar_id, time_min, time_max, query }) =>
-        proxyCall("calendar", "list_events", { calendar_id, time_min, time_max, query })
+        callFor("calendar_events")("calendar", "list_events", { calendar_id, time_min, time_max, query })
     );
 
     this.server.tool(
@@ -388,7 +400,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         location: z.string().optional().describe("Event location"),
       },
       async ({ calendar_id, summary, start, end, description, location }) =>
-        proxyCall("calendar", "create_event", {
+        callFor("calendar_create_event")("calendar", "create_event", {
           calendar_id,
           event: {
             summary,
@@ -409,7 +421,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         time_max: z.string().describe("End of range (ISO 8601)"),
       },
       async ({ calendar_id, time_min, time_max }) =>
-        proxyCall("calendar", "find_free_time", { calendar_id, time_min, time_max })
+        callFor("calendar_free_time")("calendar", "find_free_time", { calendar_id, time_min, time_max })
     );
 
     // ── Gmail Tools ───────────────────────────────────────────────────────
@@ -422,7 +434,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         max_results: z.number().default(10).describe("Number of results"),
       },
       async ({ q, max_results }) =>
-        proxyCall("gmail", "search_messages", { q, max_results })
+        callFor("gmail_search")("gmail", "search_messages", { q, max_results })
     );
 
     this.server.tool(
@@ -432,7 +444,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         message_id: z.string().describe("Gmail message ID"),
       },
       async ({ message_id }) =>
-        proxyCall("gmail", "get_message", { message_id })
+        callFor("gmail_read_message")("gmail", "get_message", { message_id })
     );
 
     this.server.tool(
@@ -442,14 +454,14 @@ export class TheChefOSMCP extends McpAgent<Env> {
         thread_id: z.string().describe("Gmail thread ID"),
       },
       async ({ thread_id }) =>
-        proxyCall("gmail", "get_thread", { thread_id })
+        callFor("gmail_read_thread")("gmail", "get_thread", { thread_id })
     );
 
     this.server.tool(
       "gmail_profile",
       "Get Gmail profile info (email address, messages total)",
       {},
-      async () => proxyCall("gmail", "get_profile", {})
+      async () => callFor("gmail_profile")("gmail", "get_profile", {})
     );
 
     // ── Val Town Tools ───────────────────────────────────────────────────────
@@ -458,7 +470,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
       "valtown_me",
       "Get Val Town profile info",
       {},
-      async () => proxyCall("valtown", "me", {})
+      async () => callFor("valtown_me")("valtown", "me", {})
     );
 
     this.server.tool(
@@ -469,7 +481,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         offset: z.number().default(0).describe("Pagination offset"),
       },
       async ({ limit, offset }) =>
-        proxyCall("valtown", "list_vals", { limit, offset })
+        callFor("valtown_list_vals")("valtown", "list_vals", { limit, offset })
     );
 
     this.server.tool(
@@ -483,7 +495,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         readme: z.string().optional().describe("Optional README/description"),
       },
       async ({ name, code, type, privacy, readme }) =>
-        proxyCall("valtown", "create_val", { name, code, type, privacy, readme })
+        callFor("valtown_create_val")("valtown", "create_val", { name, code, type, privacy, readme })
     );
 
     this.server.tool(
@@ -493,7 +505,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         val_id: z.string().describe("Val UUID"),
       },
       async ({ val_id }) =>
-        proxyCall("valtown", "get_val", { val_id })
+        callFor("valtown_get_val")("valtown", "get_val", { val_id })
     );
 
     this.server.tool(
@@ -505,7 +517,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         type: z.enum(["http", "cron", "email"]).optional().describe("Change trigger type"),
       },
       async ({ val_id, code, type }) =>
-        proxyCall("valtown", "update_val", { val_id, code, type })
+        callFor("valtown_update_val")("valtown", "update_val", { val_id, code, type })
     );
 
     this.server.tool(
@@ -515,7 +527,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         val_id: z.string().describe("Val UUID"),
       },
       async ({ val_id }) =>
-        proxyCall("valtown", "delete_val", { val_id })
+        callFor("valtown_delete_val")("valtown", "delete_val", { val_id })
     );
 
     this.server.tool(
@@ -526,7 +538,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
         args: z.array(z.unknown()).default([]).describe("Query parameters"),
       },
       async ({ sql, args }) =>
-        proxyCall("valtown", "sqlite_execute", { sql, args })
+        callFor("valtown_sqlite")("valtown", "sqlite_execute", { sql, args })
     );
   }
 }
