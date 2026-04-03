@@ -2,9 +2,11 @@ import { Hono } from 'hono';
 import { runMigrations } from './schema';
 import { migrateBrainToD1 } from './migrate';
 import { buildNodeQuery, buildCountQuery, buildGraphQuery, NodeRow, ConnectionRow } from './queries';
+import { generateAndPushCognitiveCache } from './cognitive-cache';
 
 export interface Env {
   BRAIN_DB: D1Database;
+  GITHUB_TOKEN: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -818,6 +820,29 @@ app.get('/dashboard', async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Cognitive Cache — generate and push to all repos
+// ---------------------------------------------------------------------------
+
+app.post('/cognitive-cache/generate', async (c) => {
+  const db = c.env.BRAIN_DB;
+  const token = c.env.GITHUB_TOKEN;
+  if (!token) {
+    return c.json({ error: 'GITHUB_TOKEN not configured' }, 500);
+  }
+  try {
+    const result = await generateAndPushCognitiveCache(db, token);
+    return c.json({
+      success: true,
+      repos_updated: result.repos,
+      cache_size: result.cache_size,
+      generated_at: result.generated_at,
+    });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // Health check
 app.get('/health', (c) =>
   c.json({ status: 'ok', worker: 'superclaude-brain-graph' }),
@@ -827,11 +852,21 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     return app.fetch(request, env);
   },
-  async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
-    const now = new Date().toISOString();
-    await env.BRAIN_DB.prepare(
-      'UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?'
-    ).bind(now, now, 'singleton').run();
+  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
+    if (event.cron === '0 5 * * 1') {
+      // Weekly odometer reset (Mondays at 5am UTC)
+      const now = new Date().toISOString();
+      await env.BRAIN_DB.prepare(
+        'UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?'
+      ).bind(now, now, 'singleton').run();
+    }
+
+    if (event.cron === '0 6 * * *') {
+      // Daily cognitive cache regeneration (6am UTC / midnight MT)
+      if (env.GITHUB_TOKEN) {
+        await generateAndPushCognitiveCache(env.BRAIN_DB, env.GITHUB_TOKEN);
+      }
+    }
   },
 };
 
