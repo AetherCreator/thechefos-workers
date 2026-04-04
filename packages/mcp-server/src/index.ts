@@ -320,6 +320,18 @@ export class TheChefOSMCP extends McpAgent<Env> {
         callFor("cf_kv_list")("cloudflare", "kv_list", { namespace_id })
     );
 
+    this.server.tool(
+      "cf_secret_set",
+      "Set or rotate a secret on any deployed Cloudflare Worker. Use this for token rotation — e.g. rotating GITHUB_TOKEN across all Workers after a new token is generated.",
+      {
+        script_name: z.string().describe("Worker script name (e.g. 'thechefos-mcp-server', 'thechefos-proxy', 'superclaude-brain-graph')"),
+        secret_name: z.string().describe("Secret variable name (e.g. 'GITHUB_TOKEN', 'MCP_AUTH_TOKEN')"),
+        secret_value: z.string().describe("The new secret value"),
+      },
+      async ({ script_name, secret_name, secret_value }) =>
+        callFor("cf_secret_set")("cloudflare", "secret_set", { script_name, secret_name, secret_value })
+    );
+
     // ── Vercel Tools ──────────────────────────────────────────────────────
 
     this.server.tool(
