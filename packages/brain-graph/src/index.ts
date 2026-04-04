@@ -1212,6 +1212,31 @@ app.get('/session/usage/summary', async (c) => {
 // Dashboard + Health
 // ---------------------------------------------------------------------------
 
+// OPS cycle schedule — auto-advances, no deploy needed to update
+const OPS_CYCLES = [
+  { id: 'ops-01', name: 'Brain Foundation Audit',   start: '2026-03-22', end: '2026-03-31' },
+  { id: 'ops-02', name: 'Skill Inventory',          start: '2026-04-01', end: '2026-04-08' },
+  { id: 'ops-03', name: 'Pattern Graduation',       start: '2026-04-09', end: '2026-04-16' },
+  { id: 'ops-04', name: 'Domain Coverage',          start: '2026-04-17', end: '2026-04-24' },
+  { id: 'ops-05', name: 'Cross-Domain Bridges',     start: '2026-04-25', end: '2026-05-02' },
+  { id: 'ops-06', name: 'Architecture & Tooling',   start: '2026-05-03', end: '2026-05-10' },
+  { id: 'ops-07', name: 'Skill Autoresearch',       start: '2026-05-11', end: '2026-05-18' },
+];
+
+function computeOpsCycle() {
+  const today = new Date().toISOString().slice(0, 10);
+  const active = OPS_CYCLES.find(c => today >= c.start && today <= c.end)
+    ?? OPS_CYCLES[OPS_CYCLES.length - 1];
+  const startMs  = new Date(active.start).getTime();
+  const endMs    = new Date(active.end).getTime() + 86_400_000; // inclusive end-of-day
+  const nowMs    = Date.now();
+  const elapsed  = Math.max(0, nowMs - startMs);
+  const duration = endMs - startMs;
+  const completion_pct  = Math.min(100, Math.round((elapsed / duration) * 100));
+  const days_remaining  = Math.max(0, Math.ceil((endMs - nowMs) / 86_400_000));
+  return { cycle: active.id, name: active.name, completion_pct, days_remaining };
+}
+
 // GET /dashboard — aggregated view for brain dashboard
 app.get('/dashboard', async (c) => {
   try {
@@ -1264,12 +1289,7 @@ app.get('/dashboard', async (c) => {
         least_covered: leastCovered,
         nodes_last_7d: recentCountResult?.count || 0,
       },
-      ops: {
-        cycle: 'ops-01',
-        name: 'Brain Foundation Audit',
-        completion_pct: 80,
-        days_remaining: 2,
-      },
+      ops: computeOpsCycle(),
       patterns: {
         candidates: patternsResult.results.map((p) => ({
           id: p.id,
@@ -1340,4 +1360,3 @@ export default {
     }
   },
 };
-
