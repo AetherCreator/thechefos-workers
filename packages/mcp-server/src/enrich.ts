@@ -36,7 +36,7 @@ const PATH_DOMAIN_MAP: Record<string, string> = {
   "skills": "skills",
 };
 
-/** Tools that should NOT get brain enrichment (already brain-aware or meta) */
+/** Tools that should NOT get brain enrichment (already brain-aware, meta, or write ops) */
 export const SKIP_ENRICHMENT = new Set([
   "get_active_state",
   "get_ops_board",
@@ -46,6 +46,7 @@ export const SKIP_ENRICHMENT = new Set([
   "cf_kv_get",
   "cf_kv_set",
   "cf_kv_list",
+  "cf_secret_set",
 ]);
 
 // ── Clue 1: Keyword Extraction Engine ────────────────────────────────────
