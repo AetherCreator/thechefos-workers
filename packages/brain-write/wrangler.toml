@@ -2,6 +2,8 @@ name = "thechefos-brain-write"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
 
-# GITHUB_TOKEN and WEBHOOK_SECRET set via:
-#   wrangler secret put GITHUB_TOKEN
-#   wrangler secret put WEBHOOK_SECRET
+# GITHUB_TOKEN, WEBHOOK_SECRET, GITHUB_WEBHOOK_SECRET set via wrangler secret put
+
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "e9dfcffc9e094365aec142267cb39a1e"

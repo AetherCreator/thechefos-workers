@@ -71,6 +71,9 @@ app.post('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/ap
 app.get('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
 app.get('/api/session/usage/summary', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
 
+// GitHub webhook → brain-write (raw, no prefix strip)
+app.post('/api/webhook/github', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
+
 // Brain session state (brain-write) — catch-all must come AFTER specific session routes above
 app.all('/api/session/*', (c) => forward(c.req.raw, c.env.BRAIN_WRITE, '/api/session'))
 
@@ -96,7 +99,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/webhook/github', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app

@@ -6,10 +6,13 @@ const REPO_NAME = 'SuperClaude'
 const COMMITTER = { name: 'SuperClaude Brain Ops', email: 'brain-ops@thechefos.app' }
 const MAX_CONTENT_SIZE = 50 * 1024 // 50KB
 const GITHUB_API = 'https://api.github.com'
+const SESSION_STATE_KEY = 'session:state'
 
 export interface Env {
   GITHUB_TOKEN: string
   WEBHOOK_SECRET: string
+  GITHUB_WEBHOOK_SECRET: string
+  SESSION_KV: KVNamespace
 }
 
 interface BrainPushPayload {
@@ -18,9 +21,97 @@ interface BrainPushPayload {
   message: string
 }
 
+interface SessionState {
+  active_hunt_clue: string | null
+  [key: string]: unknown
+}
+
 const app = new Hono<{ Bindings: Env }>()
 
-// Auth middleware — require WEBHOOK_SECRET on every request
+// ─── Session State ───────────────────────────────────────────────
+
+// GET /state — public read (no auth, used by hook curl)
+app.get('/state', async (c) => {
+  const raw = await c.env.SESSION_KV.get(SESSION_STATE_KEY)
+  const state: SessionState = raw ? JSON.parse(raw) : { active_hunt_clue: null }
+  return c.json(state)
+})
+
+// PATCH /state — merge fields (requires x-webhook-secret auth)
+app.patch('/state', async (c) => {
+  const secret = c.req.header('x-webhook-secret')
+  if (!secret || secret !== c.env.WEBHOOK_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const patch = await c.req.json<Partial<SessionState>>()
+  const raw = await c.env.SESSION_KV.get(SESSION_STATE_KEY)
+  const current: SessionState = raw ? JSON.parse(raw) : { active_hunt_clue: null }
+  const merged = { ...current, ...patch }
+
+  await c.env.SESSION_KV.put(SESSION_STATE_KEY, JSON.stringify(merged))
+  return c.json({ ok: true, state: merged })
+})
+
+// ─── GitHub Webhook — COMPLETE.md Detection ──────────────────────
+
+app.post('/api/webhook/github', async (c) => {
+  // Verify GitHub signature
+  const signature = c.req.header('x-hub-signature-256')
+  if (!signature) {
+    return c.json({ error: 'Missing signature' }, 401)
+  }
+
+  const body = await c.req.text()
+  const valid = await verifyGitHubSignature(c.env.GITHUB_WEBHOOK_SECRET, body, signature)
+  if (!valid) {
+    return c.json({ error: 'Invalid signature' }, 401)
+  }
+
+  const payload = JSON.parse(body)
+
+  // Only handle push events
+  if (!payload.commits || !Array.isArray(payload.commits)) {
+    return c.json({ ok: true, action: 'ignored — not a push event' })
+  }
+
+  // Scan all commits for COMPLETE.md files
+  let foundComplete = false
+  for (const commit of payload.commits) {
+    const allFiles = [
+      ...(commit.added || []),
+      ...(commit.modified || []),
+    ]
+    for (const file of allFiles) {
+      if (file.endsWith('COMPLETE.md')) {
+        foundComplete = true
+        break
+      }
+    }
+    if (foundComplete) break
+  }
+
+  if (!foundComplete) {
+    return c.json({ ok: true, action: 'no COMPLETE.md detected' })
+  }
+
+  // Clear the active hunt clue
+  const raw = await c.env.SESSION_KV.get(SESSION_STATE_KEY)
+  const current: SessionState = raw ? JSON.parse(raw) : { active_hunt_clue: null }
+  const previousClue = current.active_hunt_clue
+  current.active_hunt_clue = null
+  await c.env.SESSION_KV.put(SESSION_STATE_KEY, JSON.stringify(current))
+
+  return c.json({
+    ok: true,
+    action: 'gate_cleared',
+    previous_clue: previousClue,
+  })
+})
+
+// ─── Brain Push (existing) ───────────────────────────────────────
+
+// Auth middleware for brain push
 app.use('/api/brain/push', async (c, next) => {
   const secret = c.req.header('x-webhook-secret')
   if (!secret || secret !== c.env.WEBHOOK_SECRET) {
@@ -33,22 +124,15 @@ app.use('/api/brain/push', async (c, next) => {
 app.post('/api/brain/push', async (c) => {
   const body = await c.req.json<BrainPushPayload>()
 
-  // --- Validation ---
   if (!body.path || !body.content || !body.message) {
     return c.json({ error: 'Missing required fields: path, content, message' }, 400)
   }
-
-  // Path must start with brain/
   if (!body.path.startsWith('brain/')) {
     return c.json({ error: 'Path must start with brain/' }, 400)
   }
-
-  // Block path traversal
   if (body.path.includes('..')) {
     return c.json({ error: 'Path traversal not allowed' }, 400)
   }
-
-  // Content size limit
   if (new TextEncoder().encode(body.content).byteLength > MAX_CONTENT_SIZE) {
     return c.json({ error: `Content exceeds ${MAX_CONTENT_SIZE / 1024}KB limit` }, 400)
   }
@@ -61,14 +145,12 @@ app.post('/api/brain/push', async (c) => {
   }
 
   try {
-    // --- Duplicate detection: check if file already exists ---
     const existingFile = await getFileContent(body.path, headers)
     const contentBase64 = btoa(unescape(encodeURIComponent(body.content)))
 
     let commitSha: string
 
     if (existingFile) {
-      // Update existing file
       const updateRes = await fetch(
         `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${body.path}`,
         {
@@ -89,7 +171,6 @@ app.post('/api/brain/push', async (c) => {
       const updateData = await updateRes.json() as { commit: { sha: string } }
       commitSha = updateData.commit.sha
     } else {
-      // Create new file
       const createRes = await fetch(
         `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${body.path}`,
         {
@@ -110,9 +191,7 @@ app.post('/api/brain/push', async (c) => {
       commitSha = createData.commit.sha
     }
 
-    // --- GRAPH-INDEX auto-update ---
     await appendToGraphIndex(body.path, body.message, headers)
-
     return c.json({ ok: true, sha: commitSha, path: body.path, updated: !!existingFile })
   } catch (err) {
     return c.json({ error: 'Internal error', details: String(err) }, 500)
@@ -120,11 +199,11 @@ app.post('/api/brain/push', async (c) => {
 })
 
 // Health check
-app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write' }))
+app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', features: ['brain-push', 'session-state', 'github-webhook'] }))
 
 export default app
 
-// --- Helpers ---
+// ─── Helpers ─────────────────────────────────────────────────────
 
 interface GitHubFileContent {
   sha: string
@@ -156,15 +235,10 @@ async function appendToGraphIndex(
 
   const currentContent = decodeBase64Content(existing.content)
   const today = new Date().toISOString().split('T')[0]
-
-  // Determine domain from path
   const domain = domainFromPath(nodePath)
   const filename = nodePath.split('/').pop() ?? nodePath
-
-  // Append entry below the last line
   const newEntry = `\n| \`HOT\` | ${filename} | ${domain} | ${summary} | _auto-pushed ${today}_ |`
   const updatedContent = currentContent.trimEnd() + '\n' + newEntry + '\n'
-
   const contentBase64 = btoa(unescape(encodeURIComponent(updatedContent)))
 
   await fetch(
@@ -183,7 +257,6 @@ async function appendToGraphIndex(
 }
 
 function decodeBase64Content(encoded: string): string {
-  // GitHub returns base64 with newlines
   const cleaned = encoded.replace(/\n/g, '')
   return decodeURIComponent(escape(atob(cleaned)))
 }
@@ -201,4 +274,27 @@ function domainFromPath(path: string): string {
   if (path.includes('05-knowledge')) return 'knowledge'
   if (path.includes('06-meta')) return 'meta'
   return 'brain'
+}
+
+async function verifyGitHubSignature(
+  secret: string,
+  payload: string,
+  signature: string
+): Promise<boolean> {
+  const encoder = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload))
+  const expected =
+    'sha256=' +
+    Array.from(new Uint8Array(sig))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+  // Timing-safe comparison via string equality on fixed-length hex
+  return expected.length === signature.length && expected === signature
 }
