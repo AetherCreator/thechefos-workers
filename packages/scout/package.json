@@ -1,0 +1,7 @@
+{
+  "name": "thechefos-scout",
+  "private": true,
+  "dependencies": {
+    "hono": "^4.0.0"
+  }
+}
