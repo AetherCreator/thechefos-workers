@@ -1334,6 +1334,41 @@ app.post('/cognitive-cache/generate', async (c) => {
   }
 });
 
+
+// POST /intel/log
+app.post("/intel/log", async (c) => {
+  const body = await c.req.json();
+  try {
+    const result = await c.env.BRAIN_DB.prepare(`INSERT INTO hunt_intelligence (hunt_name, clue_number, clue_title, model_used, status, start_time, end_time, duration_seconds, token_estimate, stuck_count, commit_sha, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(body.hunt_name, body.clue_number, body.clue_title || null, body.model_used || null, body.status, body.start_time || null, body.end_time || null, body.duration_seconds || null, body.token_estimate || null, body.stuck_count || 0, body.commit_sha || null, body.notes || null).run();
+    return c.json({ ok: true, id: result.meta?.last_row_id });
+  } catch (e) {
+    return c.json({ ok: false, error: (e as Error).message }, 500);
+  }
+});
+
+// GET /intel/summary
+app.get("/intel/summary", async (c) => {
+  try {
+    const rows = await c.env.BRAIN_DB.prepare(`SELECT hunt_name, COUNT(*) as total_clues, SUM(CASE WHEN status = "complete" THEN 1 ELSE 0 END) as completed, SUM(CASE WHEN status = "stuck" THEN 1 ELSE 0 END) as stuck, AVG(duration_seconds) as avg_duration_sec, SUM(token_estimate) as total_tokens, model_used, COUNT(DISTINCT model_used) as model_count FROM hunt_intelligence WHERE created_at > datetime("now", "-7 days") GROUP BY hunt_name, model_used ORDER BY hunt_name`).all();
+    return c.json(rows.results);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// GET /intel/clue
+app.get("/intel/clue", async (c) => {
+  const hunt = c.req.query("hunt");
+  const clue = c.req.query("clue");
+  if (!hunt || !clue) { return c.json({ error: "Missing hunt or clue parameter" }, 400); }
+  try {
+    const row = await c.env.BRAIN_DB.prepare("SELECT * FROM hunt_intelligence WHERE hunt_name = ? AND clue_number = ? ORDER BY created_at DESC LIMIT 1").bind(hunt, parseInt(clue, 10)).first();
+    return c.json(row || { error: "not found" });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // Health check
 app.get('/health', (c) =>
   c.json({ status: 'ok', worker: 'superclaude-brain-graph' }),
