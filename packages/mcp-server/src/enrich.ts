@@ -1,10 +1,12 @@
 // packages/mcp-server/src/enrich.ts
-// Sidecar Brain — enriches MCP tool responses with relevant brain context from Vectorize
+// Sidecar Brain — enriches MCP tool responses with relevant brain context from brain-search
+// Improvement #4: Proactive Context Push — prepended BRAIN CONTEXT block, 500ms timeout, top-3 results
 
 const BRAIN_SEARCH_URL =
-  "https://thechefos-brain-search.tveg-baking.workers.dev/api/brain/search";
+  "https://api.thechefos.app/api/brain/search";
 
-const BRAIN_SEARCH_TIMEOUT_MS = 2000;
+// 500ms — fail fast, never block tool response
+const BRAIN_SEARCH_TIMEOUT_MS = 500;
 
 const NOISE_WORDS = new Set([
   "get", "set", "list", "put", "delete", "create", "update", "read",
@@ -47,13 +49,14 @@ export const SKIP_ENRICHMENT = new Set([
   "cf_kv_set",
   "cf_kv_list",
   "cf_secret_set",
+  "preload_context", // brain-search tool itself — no recursive enrichment
 ]);
 
-// ── Clue 1: Keyword Extraction Engine ────────────────────────────────────
+// ── Keyword Extraction Engine ─────────────────────────────────────────────
 
 /**
  * Extracts meaningful search keywords from an MCP tool call.
- * Returns a 3-8 word query suitable for Vectorize semantic search.
+ * Returns a 3-8 word query suitable for semantic search.
  */
 export function extractKeywords(
   toolName: string,
@@ -66,7 +69,6 @@ export function extractKeywords(
   const nameTokens = toolName
     .split("_")
     .filter((w) => !NOISE_WORDS.has(w.toLowerCase()));
-  // Keep meaningful tokens (e.g. "github" from "github_get_file" is useful context)
   parts.push(...nameTokens);
 
   // 2. Extract from params — grab high-value fields
@@ -82,7 +84,7 @@ export function extractKeywords(
   if (response.length > 0) {
     const snippet = response.slice(0, 500);
     const responseTokens = extractDomainTokens(snippet);
-    parts.push(...responseTokens.slice(0, 3)); // limit response contribution
+    parts.push(...responseTokens.slice(0, 3));
   }
 
   // Deduplicate, strip noise, and limit to 3-8 words
@@ -101,14 +103,12 @@ function extractFromValue(key: string, value: string): string[] {
   const tokens: string[] = [];
 
   if (key === "path") {
-    // Map path segments to domain keywords
     const segments = value.split(/[/\\]/);
     for (const seg of segments) {
-      const lower = seg.toLowerCase().replace(/\.[^.]+$/, ""); // strip extension
+      const lower = seg.toLowerCase().replace(/\.[^.]+$/, "");
       if (PATH_DOMAIN_MAP[lower]) {
         tokens.push(PATH_DOMAIN_MAP[lower]);
       } else if (lower.length > 2 && !NOISE_WORDS.has(lower)) {
-        // Split camelCase and kebab-case
         tokens.push(
           ...lower
             .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -118,7 +118,6 @@ function extractFromValue(key: string, value: string): string[] {
       }
     }
   } else if (key === "sql") {
-    // Extract table names and WHERE values from SQL
     const tableMatch = value.match(/(?:FROM|INTO|UPDATE|JOIN)\s+(\w+)/gi);
     if (tableMatch) {
       for (const m of tableMatch) {
@@ -134,10 +133,8 @@ function extractFromValue(key: string, value: string): string[] {
       }
     }
   } else if (key === "repo") {
-    // Repo names are meaningful
     tokens.push(value.toLowerCase().replace(/[^a-z0-9-]/g, ""));
   } else {
-    // Generic: split on common delimiters
     tokens.push(
       ...value
         .split(/[\s/\\._-]+/)
@@ -150,9 +147,7 @@ function extractFromValue(key: string, value: string): string[] {
 
 /** Extract domain-specific tokens from a text snippet */
 function extractDomainTokens(text: string): string[] {
-  // Look for capitalized words (proper nouns / domain concepts)
   const capitalWords = text.match(/\b[A-Z][a-z]{2,}\b/g) || [];
-  // Look for domain keywords from our map
   const domainHits: string[] = [];
   const lower = text.toLowerCase();
   for (const [key, domain] of Object.entries(PATH_DOMAIN_MAP)) {
@@ -167,7 +162,7 @@ function extractDomainTokens(text: string): string[] {
   ];
 }
 
-// ── Clue 2: Brain Search Integration ─────────────────────────────────────
+// ── Brain Search Integration ──────────────────────────────────────────────
 
 export interface BrainContext {
   path: string;
@@ -176,13 +171,13 @@ export interface BrainContext {
 }
 
 /**
- * Queries the brain-search Worker for relevant brain nodes.
- * Returns formatted brain context or empty array on failure.
- * Never blocks the parent tool response — 2s timeout, errors caught silently.
+ * Queries the brain-search endpoint for relevant brain nodes.
+ * Returns top-3 results or empty array on failure/timeout.
+ * Hard 500ms timeout — never blocks the parent tool response.
  */
 export async function searchBrain(
   query: string,
-  limit: number = 2,
+  limit: number = 3,
 ): Promise<BrainContext[]> {
   if (!query || query.trim().length === 0) return [];
 
@@ -208,37 +203,41 @@ export async function searchBrain(
     if (!data.results || !Array.isArray(data.results)) return [];
 
     return data.results
-      .filter((r) => typeof r.score === "number" && r.score > 50) // score is 0-100
+      .filter((r) => typeof r.score === "number" && r.score > 50)
+      .slice(0, limit)
       .map((r) => ({
         path: r.path || "unknown",
         score: r.score!,
-        preview: (r.preview || "").slice(0, 200),
+        preview: (r.preview || "").slice(0, 250),
       }));
   } catch {
-    // Timeout, network error, parse error — never fail the parent
     return [];
   }
 }
 
-// ── Clue 3: Enrichment Wrapper ───────────────────────────────────────────
+// ── Enrichment Wrapper ────────────────────────────────────────────────────
 
 type McpToolResult = {
   content: Array<{ type: "text"; text: string }>;
 };
 
 /**
- * Formats brain context results into an MCP text block.
+ * Formats brain context results into a BRAIN CONTEXT block.
+ * Prepended before tool output so Claude sees context first.
  */
-function formatBrainContext(results: BrainContext[]): string {
+export function formatBrainContext(results: BrainContext[]): string {
   if (results.length === 0) return "";
-  const lines = results.map((r) => `[brain:${r.path}] ${r.preview}`);
-  return `--- Brain Context ---\n${lines.join("\n")}`;
+  const lines = results.map(
+    (r) => `  [${r.path}] (score: ${r.score})\n  ${r.preview}`,
+  );
+  return `--- BRAIN CONTEXT (top ${results.length} relevant nodes) ---\n${lines.join("\n\n")}\n--- END BRAIN CONTEXT ---`;
 }
 
 /**
  * Creates an enriched proxy call function that wraps the standard proxyCall.
- * After the normal proxy response, it extracts keywords, searches the brain,
- * and appends matching brain context as a second text block.
+ * Searches the brain using keywords extracted from the tool call params,
+ * then PREPENDS the BRAIN CONTEXT block before the tool result.
+ * If brain search fails or times out (500ms), proceeds without context.
  */
 export function createEnrichedProxyCall(
   proxyCall: (
@@ -253,28 +252,24 @@ export function createEnrichedProxyCall(
     operation: string,
     params: Record<string, unknown>,
   ): Promise<McpToolResult> {
-    // 1. Execute normal proxy call
-    const result = await proxyCall(service, operation, params);
+    // 1. Extract keywords from params BEFORE the proxy call (proactive)
+    const keywords = extractKeywords(toolName, params, "");
 
-    // 2. Extract the response text for keyword analysis
-    const responseText = result.content
-      .map((c) => c.text)
-      .join(" ")
-      .slice(0, 500);
+    // 2. Fire brain search and proxy call concurrently — 500ms cap on brain search
+    const [result, brainResults] = await Promise.all([
+      proxyCall(service, operation, params),
+      keywords ? searchBrain(keywords, 3) : Promise.resolve([]),
+    ]);
 
-    // 3. Extract keywords and search brain
-    const keywords = extractKeywords(toolName, params, responseText);
-    if (!keywords) return result;
-
-    const brainResults = await searchBrain(keywords, 2);
+    // 3. No brain context found — return result as-is
     if (brainResults.length === 0) return result;
 
-    // 4. Append brain context as a second text block
+    // 4. PREPEND brain context before the tool result (proactive context push)
     const brainText = formatBrainContext(brainResults);
     return {
       content: [
-        ...result.content,
         { type: "text" as const, text: brainText },
+        ...result.content,
       ],
     };
   };
