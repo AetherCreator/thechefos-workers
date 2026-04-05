@@ -55,7 +55,7 @@ async function githubListDir(env: Env, path: string): Promise<GitHubDirEntry[]> 
 export class TheChefOSMCP extends McpAgent<Env> {
   server = new McpServer({
     name: "thechefos-mcp-server",
-    version: "0.2.0",
+    version: "0.3.0",
   });
 
   async init() {
@@ -393,6 +393,32 @@ export class TheChefOSMCP extends McpAgent<Env> {
       },
       async ({ team_id, deployment_id, since }) =>
         callFor("vercel_runtime_logs")("vercel", "get_runtime_logs", { team_id, deployment_id, since })
+    );
+
+    this.server.tool(
+      "vercel_env_upsert",
+      "Create or update an environment variable on a Vercel project. Automatically detects if the key exists and patches or creates accordingly. Use for Stripe key flips, feature flags, any config change that needs a redeploy.",
+      {
+        project_id: z.string().describe("Vercel project ID (e.g. 'prj_xxxx') or project name slug"),
+        key: z.string().describe("Environment variable name (e.g. 'VITE_STRIPE_PUBLISHABLE_KEY')"),
+        value: z.string().describe("New value for the environment variable"),
+        target: z.array(z.enum(["production", "preview", "development"])).default(["production", "preview", "development"]).describe("Deployment targets"),
+        type: z.enum(["plain", "secret", "encrypted"]).default("plain").describe("Variable type — use 'encrypted' for secrets like API keys"),
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+      },
+      async ({ project_id, key, value, target, type, team_id }) =>
+        callFor("vercel_env_upsert")("vercel", "env_upsert", { project_id, key, value, target, type, team_id })
+    );
+
+    this.server.tool(
+      "vercel_redeploy",
+      "Trigger a production redeploy of a Vercel project from its latest deployment. Call this after vercel_env_upsert to apply new environment variables.",
+      {
+        project_id: z.string().describe("Vercel project ID or slug"),
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+      },
+      async ({ project_id, team_id }) =>
+        callFor("vercel_redeploy")("vercel", "redeploy", { project_id, team_id })
     );
 
     // ── Calendar Tools ────────────────────────────────────────────────────
