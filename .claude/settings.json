@@ -14,15 +14,16 @@
   },
   "permissions": {
     "allow": [
-      "Bash(npm run *)",
-      "Bash(npx wrangler *)",
-      "Bash(npx tsc *)",
+      "Bash(*)",
       "Read(*)",
       "Glob(*)",
-      "Grep(*)"
+      "Grep(*)",
+      "Write(*)",
+      "Edit(*)"
     ],
     "deny": [
-      "Bash(rm -rf *)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)",
       "Bash(npx wrangler delete *)"
     ]
   }
