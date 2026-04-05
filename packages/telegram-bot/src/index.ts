@@ -68,6 +68,20 @@ app.post('/api/telegram', async (c) => {
 
     // Text message (with or without command)
     if (message.text) {
+      // Conductor commands → forward to n8n Telegram Command Router
+      const conductorCommands = ['/build', '/kill', '/babysit', '/hunts']
+      const isConductor = conductorCommands.some(
+        (cmd) => message.text === cmd || message.text!.startsWith(cmd + ' ')
+      )
+      if (isConductor) {
+        await fetch('https://n8n.thechefos.app/webhook/telegram-commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        })
+        return c.json({ ok: true })
+      }
+
       // Special commands that don't push to brain
       if (message.text === '/status') {
         await handleStatus(c.env, chatId)
