@@ -43,6 +43,17 @@ app.get('/health', async (c) => {
 })
 
 // Telegram webhook endpoint
+// Outbound send endpoint — used by n8n to send replies to Tyler
+// Body: { message: { chat: { id: number }, text: string } }
+app.post('/api/telegram/send', async (c) => {
+  const body = await c.req.json<{ message: { chat: { id: number }; text: string } }>()
+  const chatId = body?.message?.chat?.id
+  const text = body?.message?.text
+  if (!chatId || !text) return c.json({ ok: false, error: 'missing chat_id or text' }, 400)
+  await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, text)
+  return c.json({ ok: true })
+})
+
 app.post('/api/telegram', async (c) => {
   const body = await c.req.json<TelegramUpdate>()
 
