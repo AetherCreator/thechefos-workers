@@ -62,6 +62,24 @@ export async function runMigrations(db: D1Database): Promise<void> {
         weekly_last_updated TEXT
       )
     `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS hunt_intelligence (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hunt_name TEXT NOT NULL,
+        clue_number INTEGER NOT NULL,
+        clue_title TEXT,
+        model_used TEXT,
+        status TEXT NOT NULL,
+        start_time TEXT,
+        end_time TEXT,
+        duration_seconds INTEGER,
+        token_estimate INTEGER,
+        stuck_count INTEGER DEFAULT 0,
+        commit_sha TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_domain ON brain_nodes(domain)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_type ON brain_nodes(type)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_updated_at ON brain_nodes(updated_at)`),
@@ -70,5 +88,8 @@ export async function runMigrations(db: D1Database): Promise<void> {
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_session_date ON session_usage(date)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_session_type ON session_usage(session_type)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_session_surface ON session_usage(surface)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_hunt_intelligence_hunt ON hunt_intelligence(hunt_name)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_hunt_intelligence_status ON hunt_intelligence(status)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_hunt_intelligence_model ON hunt_intelligence(model_used)`),
   ]);
 }
