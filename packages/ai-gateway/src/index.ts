@@ -2,6 +2,7 @@
 export interface Env {
   CF_ACCOUNT_ID: string
   CF_API_TOKEN: string
+  XAI_API_KEY: string
   BRAIN_SEARCH_URL?: string
 }
 
@@ -75,10 +76,54 @@ function buildBrainContext(results: BrainSearchResult[]): string {
   return `--- Tyler's Knowledge (Brain Context) ---\n${lines.join('\n')}\n---`
 }
 
+/** Handle Grok/xAI API proxy — route through CF AI Gateway for caching */
+async function handleGrok(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url)
+  // Strip /ai/grok prefix → keep the xAI API path (e.g. /v1/chat/completions)
+  const xaiPath = url.pathname.replace(/^\/ai\/grok/, '')
+
+  // Route through CF AI Gateway for caching + logging
+  // CF AI Gateway universal endpoint pattern: /v1/{account_id}/{gateway_id}/{provider}/*
+  // For providers not natively supported, use "universal" provider with full URL
+  const gatewayUrl =
+    `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/default/universal`
+
+  // Build the proxied request to xAI
+  const xaiTargetUrl = `https://api.x.ai${xaiPath}`
+
+  const headers = new Headers()
+  headers.set('Content-Type', 'application/json')
+  headers.set('cf-aig-authorization', `Bearer ${env.CF_API_TOKEN}`)
+  // Log Grok payloads (Tyler's personal use, no privacy concern)
+  headers.set('cf-aig-collect-log-payload', 'true')
+  // Universal provider headers
+  headers.set('cf-aig-provider-url', 'https://api.x.ai')
+  headers.set('Authorization', `Bearer ${env.XAI_API_KEY}`)
+
+  if (request.method === 'POST') {
+    return fetch(`${gatewayUrl}${xaiPath}`, {
+      method: 'POST',
+      headers,
+      body: request.body,
+    })
+  }
+
+  return fetch(`${gatewayUrl}${xaiPath}`, {
+    method: request.method,
+    headers,
+  })
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
 
+    // === Grok/xAI route ===
+    if (url.pathname.startsWith('/ai/grok/')) {
+      return handleGrok(request, env)
+    }
+
+    // === Anthropic route (existing) ===
     // Strip /ai prefix, keep /anthropic/... path
     const anthropicPath = url.pathname.replace(/^\/ai/, '')
 
