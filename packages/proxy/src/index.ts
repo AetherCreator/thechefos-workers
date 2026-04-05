@@ -82,7 +82,6 @@ app.post('/github/:operation', async (c) => {
         body: JSON.stringify({ base: params.base, head: params.head, commit_message: params.message }),
       })
       if (!res.ok) throw new Error(`GitHub ${res.status}: ${await res.text()}`)
-      // 204 = already up to date (no body), 201 = new merge commit with body
       data = res.status === 204 ? { merged: true, sha: null, message: 'Already up to date' } : await res.json()
     } else if (op === 'list_commits') {
       const perPage = (params.per_page as number | undefined) || 20
@@ -145,8 +144,6 @@ app.post('/cloudflare/:operation', async (c) => {
       if (!res.ok) throw new Error(`CF ${res.status}: ${await res.text()}`)
       data = await res.json()
     } else if (op === 'secret_set') {
-      // Set or update a Worker secret — used for token rotation across all Workers
-      // params: { script_name: string, secret_name: string, secret_value: string }
       const scriptName = params.script_name as string
       const secretName = params.secret_name as string
       const secretValue = params.secret_value as string
@@ -199,6 +196,63 @@ app.post('/vercel/:operation', async (c) => {
       const res = await fetch(`https://api.vercel.com/v5/domains/${params.domain}?teamId=${teamId}`, { headers: vHeaders })
       if (!res.ok) throw new Error(`Vercel ${res.status}: ${await res.text()}`)
       data = await res.json()
+
+    } else if (op === 'env_upsert') {
+      // Upsert an env var on a Vercel project (create or update by key)
+      // params: project_id, key, value, target (array, default all), type (plain/secret/encrypted)
+      const projectId = params.project_id as string
+      const key = params.key as string
+      const value = params.value as string
+      const target = (params.target as string[] | undefined) || ['production', 'preview', 'development']
+      const envType = (params.type as string | undefined) || 'plain'
+      if (!projectId || !key || value === undefined) {
+        throw new Error('env_upsert requires project_id, key, and value')
+      }
+      // List existing env vars to check if key already exists
+      const listRes = await fetch(`https://api.vercel.com/v10/projects/${projectId}/env?teamId=${teamId}&limit=100`, { headers: vHeaders })
+      if (!listRes.ok) throw new Error(`Vercel list env ${listRes.status}: ${await listRes.text()}`)
+      const listData = await listRes.json() as { envs: Array<{ id: string; key: string }> }
+      const existing = listData.envs?.find((e) => e.key === key)
+      if (existing) {
+        // Update existing env var
+        const patchRes = await fetch(`https://api.vercel.com/v10/projects/${projectId}/env/${existing.id}?teamId=${teamId}`, {
+          method: 'PATCH',
+          headers: vHeaders,
+          body: JSON.stringify({ value, target, type: envType }),
+        })
+        if (!patchRes.ok) throw new Error(`Vercel patch env ${patchRes.status}: ${await patchRes.text()}`)
+        data = { action: 'updated', key, ...(await patchRes.json() as object) }
+      } else {
+        // Create new env var
+        const postRes = await fetch(`https://api.vercel.com/v10/projects/${projectId}/env?teamId=${teamId}`, {
+          method: 'POST',
+          headers: vHeaders,
+          body: JSON.stringify({ key, value, target, type: envType }),
+        })
+        if (!postRes.ok) throw new Error(`Vercel create env ${postRes.status}: ${await postRes.text()}`)
+        data = { action: 'created', key, ...(await postRes.json() as object) }
+      }
+
+    } else if (op === 'redeploy') {
+      // Trigger a production redeploy from the latest READY deployment
+      // params: project_id
+      const projectId = params.project_id as string
+      if (!projectId) throw new Error('redeploy requires project_id')
+      // Get latest READY deployment
+      const listRes = await fetch(`https://api.vercel.com/v6/deployments?teamId=${teamId}&projectId=${projectId}&limit=5`, { headers: vHeaders })
+      if (!listRes.ok) throw new Error(`Vercel list deployments ${listRes.status}: ${await listRes.text()}`)
+      const listData = await listRes.json() as { deployments: Array<{ uid: string; state: string; target: string }> }
+      const latest = listData.deployments?.find((d) => d.state === 'READY' && d.target === 'production')
+        ?? listData.deployments?.[0]
+      if (!latest) throw new Error('No deployments found to redeploy from')
+      const redeployRes = await fetch(`https://api.vercel.com/v12/deployments/${latest.uid}/redeploy?teamId=${teamId}`, {
+        method: 'POST',
+        headers: vHeaders,
+        body: JSON.stringify({ target: 'production' }),
+      })
+      if (!redeployRes.ok) throw new Error(`Vercel redeploy ${redeployRes.status}: ${await redeployRes.text()}`)
+      data = await redeployRes.json()
+
     } else {
       return c.json({ ok: false, error: `Unknown vercel operation: ${op}` }, 400)
     }
@@ -299,14 +353,12 @@ app.post('/valtown/:operation', async (c) => {
       if (!res.ok) throw new Error(`ValTown ${res.status}: ${await res.text()}`)
       data = await res.json()
     } else if (op === 'create_val') {
-      // Step 1: create val shell
       const createRes = await fetch(`${base}/v2/vals`, {
         method: 'POST', headers: vtHeaders,
         body: JSON.stringify({ name: params.name, privacy: params.privacy || 'private', description: params.readme || '' }),
       })
       if (!createRes.ok) throw new Error(`ValTown create ${createRes.status}: ${await createRes.text()}`)
       const val = await createRes.json() as { id: string }
-      // Step 2: add main file — path goes in query string per v2 spec
       const fileType = params.type || 'http'
       const fileRes = await fetch(`${base}/v2/vals/${val.id}/files?path=index.ts`, {
         method: 'POST', headers: vtHeaders,
