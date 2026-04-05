@@ -2,14 +2,9 @@ name = "thechefos-scout"
 main = "src/index.ts"
 compatibility_date = "2026-03-01"
 
-[vars]
-SEARXNG_URL = "http://localhost:8888"
-# Override via wrangler secret put for production:
-# SEARXNG_URL = "https://searx.thechefos.app"
+# SEARXNG_URL set via wrangler secret (http://178.156.178.118:8888 or https://searx.thechefos.app)
 
 # KV namespace for URL content cache (7-day TTL)
-# Create with: wrangler kv namespace create SCOUT_KV
-# Then paste the ID below
-# [[kv_namespaces]]
-# binding = "SCOUT_KV"
-# id = "TO_BE_CREATED"
+[[kv_namespaces]]
+binding = "SCOUT_KV"
+id = "8b79213b06ed482c98b94afa064ea559"

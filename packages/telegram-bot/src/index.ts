@@ -113,6 +113,75 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
+      // Grok Forge commands → forward to n8n Grok Harvester
+      if (message.text!.startsWith('/idea ')) {
+        const content = message.text!.slice(6).trim()
+        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🧠 Harvesting idea...')
+        await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'idea', content, chat_id: chatId }),
+        })
+        return c.json({ ok: true })
+      }
+
+      if (message.text!.startsWith('/dump ')) {
+        const content = message.text!.slice(6).trim()
+        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🧠 Processing dump...')
+        await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'dump', content, chat_id: chatId }),
+        })
+        return c.json({ ok: true })
+      }
+
+      if (message.text === '/scan') {
+        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🔍 Running brain scan...')
+        await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'scan', chat_id: chatId }),
+        })
+        return c.json({ ok: true })
+      }
+
+      // Researcher command → forward to n8n Researcher Agent
+      if (message.text!.startsWith('/research ')) {
+        const args = message.text!.slice(10).trim()
+        const topicMatch = args.match(/^"([^"]+)"\s*(.*)$/) || args.match(/^(\S+)\s*(.*)$/)
+        const topic = topicMatch ? topicMatch[1] : args
+        const depth = topicMatch?.[2]?.trim() || 'surface'
+        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, `📚 Starting research: "${topic}" (${depth})...`)
+        await fetch('https://n8n.thechefos.app/webhook/researcher', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic, depth, chat_id: chatId }),
+        })
+        return c.json({ ok: true })
+      }
+
+      // Wiki search
+      if (message.text!.startsWith('/wiki ')) {
+        const query = message.text!.slice(6).trim()
+        const wikiResp = await fetch(
+          `https://api.thechefos.app/api/brain/graph/query?q=${encodeURIComponent(query)}&limit=5`
+        )
+        if (wikiResp.ok) {
+          const data = await wikiResp.json() as { results?: Array<{ title: string; slug: string; summary?: string }> }
+          const results = (data as any).results || (data as any).data || []
+          if (results.length > 0) {
+            const msg = '📖 Wiki Results:\n' + results.map((r: any) => `• ${r.title || r.slug}: ${(r.summary || r.insight || '').slice(0, 80)}`).join('\n')
+            await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, msg)
+          } else {
+            await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, `📖 No wiki results for "${query}"`)
+          }
+        } else {
+          await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '⚠️ Wiki search unavailable')
+        }
+        return c.json({ ok: true })
+      }
+
       // Special commands that don't push to brain
       if (message.text === '/status') {
         await handleStatus(c.env, chatId)
@@ -271,6 +340,13 @@ async function handleHelp(token: string, chatId: number): Promise<void> {
     '/bake [text] → chef/professional',
     '/coci [text] → family',
     '/money [text] → finance',
+    '',
+    '*Grok Forge:*',
+    '/idea [text] → harvest knowledge nodes',
+    '/dump [text] → bulk knowledge extraction',
+    '/scan → brain scan + suggestions',
+    '/research "[topic]" [depth] → wiki research',
+    '/wiki [query] → search wiki',
     '',
     '*Other:*',
     '🎤 Voice message → auto-transcribed & captured',

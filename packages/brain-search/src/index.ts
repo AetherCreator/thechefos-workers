@@ -32,6 +32,40 @@ app.get('/health', (c) =>
   c.json({ status: 'ok', worker: 'thechefos-brain-search', index: 'superclaude-brain' })
 )
 
+// --- Per-file ingest (for n8n auto-vectorize on push) ---
+app.post('/api/brain/ingest', async (c) => {
+  const body = await c.req.json<{ path: string; content: string }>()
+  if (!body.path || !body.content) {
+    return c.json({ error: 'Missing required fields: path, content' }, 400)
+  }
+
+  try {
+    const text = stripFrontmatter(body.content).slice(0, 1000)
+    const embedding = await c.env.AI.run(EMBEDDING_MODEL, { text: [text] }) as { data: number[][] }
+
+    const vector: VectorizeVector = {
+      id: pathToVectorId(body.path),
+      values: embedding.data[0],
+      metadata: {
+        path: body.path,
+        domain: domainFromPath(body.path),
+        preview: stripFrontmatter(body.content).slice(0, 200),
+      },
+    }
+
+    await c.env.VECTORIZE.upsert([vector])
+
+    return c.json({
+      ok: true,
+      path: body.path,
+      vectorId: pathToVectorId(body.path),
+      domain: domainFromPath(body.path),
+    })
+  } catch (err) {
+    return c.json({ error: 'Ingest failed', details: String(err) }, 500)
+  }
+})
+
 // --- Clue 2: Brain indexer ---
 app.post('/api/brain/index', async (c) => {
   const headers = githubHeaders(c.env.GITHUB_TOKEN)

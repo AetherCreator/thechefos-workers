@@ -4,6 +4,8 @@ import { Hono } from 'hono'
 
 export interface Env {
   SEARXNG_URL?: string  // e.g. https://searx.thechefos.app
+  SHELL_BRIDGE_URL?: string  // n8n shell bridge for SearXNG proxy
+  SHELL_BRIDGE_KEY?: string  // x-shell-key header value
   SCOUT_KV?: KVNamespace  // optional — degrades gracefully without it
 }
 
@@ -75,14 +77,74 @@ function extractText(html: string, url: string): { title: string; content: strin
   return { title, content: text }
 }
 
+// === Search via shell bridge (SearXNG on same VPS as n8n) ===
+async function searchViaBridge(
+  bridgeUrl: string,
+  bridgeKey: string,
+  query: string,
+  limit: number
+): Promise<{ results: SearchResult[]; error?: string }> {
+  const escapedQuery = query.replace(/'/g, "'\\''")
+  const cmd = `curl -s "http://localhost:8888/search?q=${encodeURIComponent(escapedQuery)}&format=json&engines=google,duckduckgo,bing&categories=general" -H "Accept: application/json"`
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 15000)
+
+  const res = await fetch(bridgeUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-shell-key': bridgeKey,
+    },
+    body: JSON.stringify({ command: cmd }),
+    signal: controller.signal,
+  })
+  clearTimeout(timer)
+
+  if (!res.ok) {
+    return { results: [], error: `Shell bridge returned ${res.status}` }
+  }
+
+  const bridgeResult = await res.json() as Array<{ stdout: string; stderr: string; returncode: number }>
+  if (!bridgeResult?.[0]?.stdout) {
+    return { results: [], error: 'Empty response from shell bridge' }
+  }
+
+  const data = JSON.parse(bridgeResult[0].stdout) as { results?: Array<{ url: string; title: string; content: string }> }
+  const results: SearchResult[] = (data.results ?? [])
+    .slice(0, limit)
+    .map((r) => ({
+      url: r.url,
+      title: r.title || r.url,
+      snippet: r.content || '',
+    }))
+
+  return { results }
+}
+
 // === Search endpoint ===
 app.post('/search', async (c) => {
   const { query, limit = 5 }: SearchRequest = await c.req.json()
 
+  // Prefer shell bridge (SearXNG on same VPS as n8n, avoids CF Worker → bare IP issues)
+  if (c.env.SHELL_BRIDGE_URL && c.env.SHELL_BRIDGE_KEY) {
+    try {
+      const { results, error } = await searchViaBridge(
+        c.env.SHELL_BRIDGE_URL, c.env.SHELL_BRIDGE_KEY, query, limit
+      )
+      if (error) return c.json({ error, results: [] }, 502)
+      return c.json({ results })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error'
+      return c.json({ error: `Search failed: ${message}`, results: [] }, 502)
+    }
+  }
+
+  // Fallback: direct SearXNG URL (works when SearXNG is on HTTPS/tunnel)
   const searxUrl = c.env.SEARXNG_URL
   if (!searxUrl) {
     return c.json({
-      error: 'SEARXNG_URL not configured — set up SearXNG on VPS first',
+      error: 'Neither SHELL_BRIDGE_URL nor SEARXNG_URL configured',
       results: [],
     }, 503)
   }
