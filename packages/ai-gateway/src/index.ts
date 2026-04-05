@@ -36,7 +36,6 @@ const BRAIN_RESULT_LIMIT = 2
 
 /** Extract the user's first/last message text for Vectorize query */
 function extractUserQuery(messages: AnthropicMessage[]): string {
-  // Use last user message — most relevant to current intent
   const userMessages = messages.filter((m) => m.role === 'user')
   if (!userMessages.length) return ''
   const last = userMessages[userMessages.length - 1]
@@ -76,41 +75,21 @@ function buildBrainContext(results: BrainSearchResult[]): string {
   return `--- Tyler's Knowledge (Brain Context) ---\n${lines.join('\n')}\n---`
 }
 
-/** Handle Grok/xAI API proxy — route through CF AI Gateway for caching */
+/** Handle Grok/xAI API proxy — direct passthrough to api.x.ai */
 async function handleGrok(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
   // Strip /ai/grok prefix → keep the xAI API path (e.g. /v1/chat/completions)
   const xaiPath = url.pathname.replace(/^\/ai\/grok/, '')
-
-  // Route through CF AI Gateway for caching + logging
-  // CF AI Gateway universal endpoint pattern: /v1/{account_id}/{gateway_id}/{provider}/*
-  // For providers not natively supported, use "universal" provider with full URL
-  const gatewayUrl =
-    `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/default/universal`
-
-  // Build the proxied request to xAI
-  const xaiTargetUrl = `https://api.x.ai${xaiPath}`
+  const xaiUrl = `https://api.x.ai${xaiPath}`
 
   const headers = new Headers()
   headers.set('Content-Type', 'application/json')
-  headers.set('cf-aig-authorization', `Bearer ${env.CF_API_TOKEN}`)
-  // Log Grok payloads (Tyler's personal use, no privacy concern)
-  headers.set('cf-aig-collect-log-payload', 'true')
-  // Universal provider headers
-  headers.set('cf-aig-provider-url', 'https://api.x.ai')
   headers.set('Authorization', `Bearer ${env.XAI_API_KEY}`)
 
-  if (request.method === 'POST') {
-    return fetch(`${gatewayUrl}${xaiPath}`, {
-      method: 'POST',
-      headers,
-      body: request.body,
-    })
-  }
-
-  return fetch(`${gatewayUrl}${xaiPath}`, {
+  return fetch(xaiUrl, {
     method: request.method,
     headers,
+    body: request.method === 'POST' ? request.body : undefined,
   })
 }
 
@@ -124,13 +103,11 @@ export default {
     }
 
     // === Anthropic route (existing) ===
-    // Strip /ai prefix, keep /anthropic/... path
     const anthropicPath = url.pathname.replace(/^\/ai/, '')
 
     const gatewayUrl =
       `https://gateway.ai.cloudflare.com/v1/${env.CF_ACCOUNT_ID}/default/anthropic${anthropicPath}${url.search}`
 
-    // Detect kid products — skip enrichment + never log their prompts
     const product = request.headers.get('x-product') ?? ''
     const isKidProduct = product === 'superconci' || product === 'morewords'
 
@@ -139,7 +116,6 @@ export default {
     headers.set('cf-aig-collect-log-payload', isKidProduct ? 'false' : 'true')
     headers.delete('x-product')
 
-    // Only enrich POST requests with a body (i.e. /v1/messages calls)
     if (request.method !== 'POST' || isKidProduct) {
       return fetch(gatewayUrl, {
         method: request.method,
@@ -148,7 +124,6 @@ export default {
       })
     }
 
-    // Attempt brain enrichment — fall back to original request on any failure
     try {
       const bodyText = await request.text()
       const body: AnthropicRequestBody = JSON.parse(bodyText)
@@ -158,7 +133,6 @@ export default {
       const brainContext = buildBrainContext(brainResults)
 
       if (brainContext) {
-        // Prepend brain context to existing system prompt (or create one)
         const existingSystem = typeof body.system === 'string' ? body.system : ''
         body.system = existingSystem
           ? `${brainContext}\n\n${existingSystem}`
@@ -171,7 +145,6 @@ export default {
         body: JSON.stringify(body),
       })
     } catch {
-      // Enrichment failed — forward original request unchanged
       return fetch(gatewayUrl, {
         method: 'POST',
         headers,
