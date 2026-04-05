@@ -3,7 +3,7 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { createEnrichedProxyCall, SKIP_ENRICHMENT } from "./enrich";
+import { createEnrichedProxyCall, SKIP_ENRICHMENT, searchBrain, formatBrainContext } from "./enrich";
 
 export interface Env {
   GITHUB_TOKEN: string;
@@ -125,7 +125,24 @@ export class TheChefOSMCP extends McpAgent<Env> {
       }
     );
 
-    // ---------- Proxy tools ----------
+    this.server.tool(
+      "preload_context",
+      "Proactively load relevant brain context before starting a task. Call this at the start of every session with your current task description to surface Tyler's prior thinking on the topic.",
+      {
+        query: z
+          .string()
+          .describe("The current task, question, or topic to search brain context for"),
+      },
+      async ({ query }) => {
+        const results = await searchBrain(query, 3);
+        if (results.length === 0) {
+          return { content: [{ type: "text" as const, text: "No relevant brain context found for this query." }] };
+        }
+        return { content: [{ type: "text" as const, text: formatBrainContext(results) }] };
+      }
+    );
+
+        // ---------- Proxy tools ----------
 
     const proxyCall = async (
       service: string,
