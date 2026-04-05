@@ -42,7 +42,27 @@ app.get('/health', async (c) => {
   return c.json({ status: 'ok', bot: data.result.username })
 })
 
-// Telegram webhook endpoint
+// One-shot webhook setup — sets Telegram webhook to this Worker's endpoint
+app.get('/api/telegram/setup-webhook', async (c) => {
+  const webhookUrl = 'https://api.thechefos.app/api/telegram'
+  const setResp = await fetch(
+    `https://api.telegram.org/bot${c.env.TELEGRAM_BOT_TOKEN}/setWebhook`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: webhookUrl }),
+    }
+  )
+  const setData = await setResp.json()
+
+  const infoResp = await fetch(
+    `https://api.telegram.org/bot${c.env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`
+  )
+  const infoData = await infoResp.json()
+
+  return c.json({ set: setData, info: infoData })
+})
+
 // Outbound send endpoint — used by n8n to send replies to Tyler
 // Body: { message: { chat: { id: number }, text: string } }
 app.post('/api/telegram/send', async (c) => {
