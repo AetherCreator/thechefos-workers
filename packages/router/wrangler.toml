@@ -33,3 +33,7 @@ service = "thechefos-telegram-bot"
 [[services]]
 binding = "PROXY"
 service = "thechefos-proxy"
+
+[[services]]
+binding = "SCOUT"
+service = "thechefos-scout"
