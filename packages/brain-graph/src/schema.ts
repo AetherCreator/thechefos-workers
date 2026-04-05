@@ -80,6 +80,38 @@ export async function runMigrations(db: D1Database): Promise<void> {
         created_at TEXT DEFAULT (datetime('now'))
       )
     `),
+    // === Wiki / Researcher Agent tables ===
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS wiki_topics (
+        slug TEXT PRIMARY KEY,
+        root_slug TEXT NOT NULL,
+        parent_slug TEXT,
+        title TEXT NOT NULL,
+        depth INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'queued',
+        domain TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `),
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS wiki_articles (
+        slug TEXT PRIMARY KEY,
+        root_slug TEXT NOT NULL,
+        category_slug TEXT,
+        title TEXT NOT NULL,
+        summary TEXT,
+        content TEXT,
+        sources TEXT,
+        related_slugs TEXT,
+        tags TEXT,
+        depth_level TEXT,
+        query_count INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `),
+    // === Existing indexes ===
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_domain ON brain_nodes(domain)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_type ON brain_nodes(type)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_updated_at ON brain_nodes(updated_at)`),
@@ -91,5 +123,10 @@ export async function runMigrations(db: D1Database): Promise<void> {
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_hunt_intelligence_hunt ON hunt_intelligence(hunt_name)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_hunt_intelligence_status ON hunt_intelligence(status)`),
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_hunt_intelligence_model ON hunt_intelligence(model_used)`),
+    // === Wiki indexes ===
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_wiki_topics_root ON wiki_topics(root_slug)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_wiki_topics_status ON wiki_topics(status)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_wiki_articles_root ON wiki_articles(root_slug)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_wiki_articles_category ON wiki_articles(category_slug)`),
   ]);
 }
