@@ -11,6 +11,7 @@ export interface Env {
   OAUTH_SERVER: Fetcher
   TELEGRAM_BOT: Fetcher
   PROXY: Fetcher
+  SCOUT: Fetcher
 }
 
 const app = new Hono<{ Bindings: Env }>()
@@ -80,10 +81,15 @@ app.all('/api/session/*', (c) => forward(c.req.raw, c.env.BRAIN_WRITE, '/api/ses
 // Brain write webhook (catch-all for /api/brain/*) — must come AFTER specific brain routes above
 app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
 
+// Scout — web search + fetch (strip /api/scout so downstream sees /search, /fetch)
+app.post('/api/scout/search', (c) => forward(c.req.raw, c.env.SCOUT, '/api/scout'))
+app.post('/api/scout/fetch', (c) => forward(c.req.raw, c.env.SCOUT, '/api/scout'))
+app.get('/api/scout/health', (c) => forward(c.req.raw, c.env.SCOUT, '/api/scout'))
+
 // Proxy — universal tool proxy (strip /api/proxy so downstream sees /github/*, /vercel/*, etc.)
 app.all('/api/proxy/*', (c) => forward(c.req.raw, c.env.PROXY, '/api/proxy'))
 
-// MCP context server — strip /api/mcp so downstream sees /, /.well-known/...
+// MCP context server — strip /api/mcp so downstream sees /, /.well-known/..
 app.all('/api/mcp', (c) => forward(c.req.raw, c.env.MCP_SERVER, '/api/mcp'))
 app.all('/api/mcp/*', (c) => forward(c.req.raw, c.env.MCP_SERVER, '/api/mcp'))
 
@@ -91,7 +97,7 @@ app.all('/api/mcp/*', (c) => forward(c.req.raw, c.env.MCP_SERVER, '/api/mcp'))
 app.all('/api/telegram', (c) => c.env.TELEGRAM_BOT.fetch(c.req.raw))
 app.all('/api/telegram/*', (c) => c.env.TELEGRAM_BOT.fetch(c.req.raw))
 
-// AI Gateway passthrough
+// AI Gateway passthrough (handles both Anthropic and Grok)
 app.all('/api/claude', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 
@@ -99,7 +105,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/webhook/github', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/webhook/github', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/scout/search', '/api/scout/fetch', '/api/scout/health', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
 }))
 
 export default app
