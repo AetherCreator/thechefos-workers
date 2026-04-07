@@ -7,6 +7,9 @@ export interface QueryParams {
   limit?: number;
   offset?: number;
   insights_only?: boolean;
+  // Archivist: temporal query params
+  include_superseded?: boolean;
+  as_of?: string; // ISO date string for temporal queries
 }
 
 export interface NodeRow {
@@ -20,6 +23,12 @@ export interface NodeRow {
   connection_count: number;
   is_insight: number;
   summary: string | null;
+  // Archivist: temporal fields
+  valid_from: string | null;
+  valid_to: string | null;
+  status: string | null;
+  confidence: number | null;
+  superseded_by: string | null;
 }
 
 export interface ConnectionRow {
@@ -48,6 +57,17 @@ export function buildNodeQuery(params: QueryParams): { sql: string; bindings: un
   }
   if (params.insights_only) {
     conditions.push('is_insight = 1');
+  }
+
+  // Archivist: temporal filtering
+  if (!params.include_superseded) {
+    conditions.push("(status = 'active' OR status IS NULL)");
+  }
+  if (params.as_of) {
+    conditions.push('(valid_from IS NULL OR valid_from <= ?)');
+    bindings.push(params.as_of);
+    conditions.push('(valid_to IS NULL OR valid_to >= ?)');
+    bindings.push(params.as_of);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -82,6 +102,17 @@ export function buildCountQuery(params: QueryParams): { sql: string; bindings: u
     conditions.push('is_insight = 1');
   }
 
+  // Archivist: temporal filtering
+  if (!params.include_superseded) {
+    conditions.push("(status = 'active' OR status IS NULL)");
+  }
+  if (params.as_of) {
+    conditions.push('(valid_from IS NULL OR valid_from <= ?)');
+    bindings.push(params.as_of);
+    conditions.push('(valid_to IS NULL OR valid_to >= ?)');
+    bindings.push(params.as_of);
+  }
+
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   return { sql: `SELECT COUNT(*) as total FROM brain_nodes ${where}`, bindings };
 }
@@ -106,7 +137,6 @@ export function buildGraphQuery(params: {
   }
 
   if (params.node_id) {
-    // Get the specific node plus its neighbors
     const nodeWhere = nodeConditions.length > 0 ? `AND ${nodeConditions.join(' AND ')}` : '';
     const nodesSql = `
       SELECT DISTINCT n.* FROM brain_nodes n
@@ -128,7 +158,6 @@ export function buildGraphQuery(params: {
   const nodeWhere = nodeConditions.length > 0 ? `WHERE ${nodeConditions.join(' AND ')}` : '';
   const nodesSql = `SELECT * FROM brain_nodes ${nodeWhere}`;
 
-  // Get edges for matching nodes
   if (params.domain) {
     const edgesSql = `
       SELECT c.* FROM brain_connections c
