@@ -10,6 +10,7 @@ export interface QueryParams {
   // Archivist: temporal query params
   include_superseded?: boolean;
   as_of?: string; // ISO date string for temporal queries
+  temporal_enabled?: boolean; // set to true AFTER migration has run
 }
 
 export interface NodeRow {
@@ -23,12 +24,12 @@ export interface NodeRow {
   connection_count: number;
   is_insight: number;
   summary: string | null;
-  // Archivist: temporal fields
-  valid_from: string | null;
-  valid_to: string | null;
-  status: string | null;
-  confidence: number | null;
-  superseded_by: string | null;
+  // Archivist: temporal fields (nullable until migration runs)
+  valid_from?: string | null;
+  valid_to?: string | null;
+  status?: string | null;
+  confidence?: number | null;
+  superseded_by?: string | null;
 }
 
 export interface ConnectionRow {
@@ -59,15 +60,18 @@ export function buildNodeQuery(params: QueryParams): { sql: string; bindings: un
     conditions.push('is_insight = 1');
   }
 
-  // Archivist: temporal filtering
-  if (!params.include_superseded) {
-    conditions.push("(status = 'active' OR status IS NULL)");
-  }
-  if (params.as_of) {
-    conditions.push('(valid_from IS NULL OR valid_from <= ?)');
-    bindings.push(params.as_of);
-    conditions.push('(valid_to IS NULL OR valid_to >= ?)');
-    bindings.push(params.as_of);
+  // Archivist: temporal filtering — only active when explicitly requested
+  // AND only after temporal migration has been run (temporal_enabled flag)
+  if (params.temporal_enabled) {
+    if (params.include_superseded !== true) {
+      conditions.push("(status = 'active' OR status IS NULL)");
+    }
+    if (params.as_of) {
+      conditions.push('(valid_from IS NULL OR valid_from <= ?)');
+      bindings.push(params.as_of);
+      conditions.push('(valid_to IS NULL OR valid_to >= ?)');
+      bindings.push(params.as_of);
+    }
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -103,14 +107,16 @@ export function buildCountQuery(params: QueryParams): { sql: string; bindings: u
   }
 
   // Archivist: temporal filtering
-  if (!params.include_superseded) {
-    conditions.push("(status = 'active' OR status IS NULL)");
-  }
-  if (params.as_of) {
-    conditions.push('(valid_from IS NULL OR valid_from <= ?)');
-    bindings.push(params.as_of);
-    conditions.push('(valid_to IS NULL OR valid_to >= ?)');
-    bindings.push(params.as_of);
+  if (params.temporal_enabled) {
+    if (params.include_superseded !== true) {
+      conditions.push("(status = 'active' OR status IS NULL)");
+    }
+    if (params.as_of) {
+      conditions.push('(valid_from IS NULL OR valid_from <= ?)');
+      bindings.push(params.as_of);
+      conditions.push('(valid_to IS NULL OR valid_to >= ?)');
+      bindings.push(params.as_of);
+    }
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
