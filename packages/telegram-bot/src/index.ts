@@ -14,6 +14,10 @@ export interface Env {
   BRAIN_WRITE: Fetcher
 }
 
+// Sender allowlist — only these Telegram user IDs can trigger brain writes
+// Tyler's Telegram user ID (same as chat ID for private chats)
+const BRAIN_WRITE_ALLOWED_SENDERS = new Set([6091970994])
+
 // Command → brain path mapping
 const COMMAND_PATHS: Record<string, string> = {
   '/note': 'brain/00-session/',
@@ -83,23 +87,34 @@ app.post('/api/telegram', async (c) => {
   }
 
   const chatId = message.chat.id
+  const senderId = message.from?.id
+
+  // SENDER FILTER: Only Tyler's messages can write to brain
+  // Messages without a sender (e.g., from n8n posting directly) are blocked from brain writes
+  const isTyler = senderId !== undefined && BRAIN_WRITE_ALLOWED_SENDERS.has(senderId)
 
   try {
-    // Voice message → transcribe via Workers AI Whisper
+    // Voice message → transcribe via Workers AI Whisper (Tyler only)
     if (message.voice) {
+      if (!isTyler) {
+        return c.json({ ok: true }) // silently ignore non-Tyler voice
+      }
       await handleVoice(c.env, chatId, message.voice)
       return c.json({ ok: true })
     }
 
-    // Photo message → capture with caption
+    // Photo message → capture with caption (Tyler only)
     if (message.photo && message.photo.length > 0) {
+      if (!isTyler) {
+        return c.json({ ok: true }) // silently ignore non-Tyler photos
+      }
       await handlePhoto(c.env, chatId, message.photo, message.caption)
       return c.json({ ok: true })
     }
 
     // Text message (with or without command)
     if (message.text) {
-      // Conductor commands → forward to n8n Telegram Command Router
+      // Conductor commands → forward to n8n Telegram Command Router (any sender)
       const conductorCommands = ['/build', '/kill', '/babysit', '/hunts']
       const isConductor = conductorCommands.some(
         (cmd) => message.text === cmd || message.text!.startsWith(cmd + ' ')
@@ -113,8 +128,8 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
-      // Grok Forge commands → forward to n8n Grok Harvester
-      if (message.text!.startsWith('/idea ')) {
+      // Grok Forge commands → forward to n8n Grok Harvester (Tyler only — triggers brain writes)
+      if (message.text!.startsWith('/idea ') && isTyler) {
         const content = message.text!.slice(6).trim()
         await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🧠 Harvesting idea...')
         await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
@@ -125,7 +140,7 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
-      if (message.text!.startsWith('/dump ')) {
+      if (message.text!.startsWith('/dump ') && isTyler) {
         const content = message.text!.slice(6).trim()
         await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🧠 Processing dump...')
         await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
@@ -136,7 +151,7 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
-      if (message.text === '/scan') {
+      if (message.text === '/scan' && isTyler) {
         await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🔍 Running brain scan...')
         await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
           method: 'POST',
@@ -146,8 +161,8 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
-      // Researcher command → forward to n8n Researcher Agent
-      if (message.text!.startsWith('/research ')) {
+      // Researcher command → forward to n8n Researcher Agent (Tyler only)
+      if (message.text!.startsWith('/research ') && isTyler) {
         const args = message.text!.slice(10).trim()
         const topicMatch = args.match(/^"([^"]+)"\s*(.*)$/) || args.match(/^(\S+)\s*(.*)$/)
         const topic = topicMatch ? topicMatch[1] : args
@@ -161,7 +176,7 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
-      // Wiki search
+      // Wiki search (read-only, any sender is fine)
       if (message.text!.startsWith('/wiki ')) {
         const query = message.text!.slice(6).trim()
         const wikiResp = await fetch(
@@ -182,7 +197,7 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
-      // Special commands that don't push to brain
+      // Special commands that don't push to brain (any sender)
       if (message.text === '/status') {
         await handleStatus(c.env, chatId)
         return c.json({ ok: true })
@@ -192,15 +207,23 @@ app.post('/api/telegram', async (c) => {
         return c.json({ ok: true })
       }
 
-      await handleText(c.env, chatId, message.text)
+      // Default text capture → brain (TYLER ONLY)
+      if (isTyler) {
+        await handleText(c.env, chatId, message.text)
+      }
+      // Non-Tyler text messages are silently ignored (no brain write, no error)
       return c.json({ ok: true })
     }
 
-    // Fallback — acknowledge unhandled message types
-    await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, 'Lamora hears you')
+    // Fallback — acknowledge unhandled message types (Tyler only)
+    if (isTyler) {
+      await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, 'Lamora hears you')
+    }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : 'Unknown error'
-    await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, `❌ Error: ${errMsg}`)
+    if (isTyler) {
+      await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, `❌ Error: ${errMsg}`)
+    }
   }
 
   return c.json({ ok: true })
