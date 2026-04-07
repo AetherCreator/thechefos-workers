@@ -130,3 +130,36 @@ export async function runMigrations(db: D1Database): Promise<void> {
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_wiki_articles_category ON wiki_articles(category_slug)`),
   ]);
 }
+
+// === Archivist Hunt: Temporal Validity Migration ===
+export async function runTemporalMigration(db: D1Database): Promise<void> {
+  // D1 requires individual ALTER TABLE statements
+  const alters = [
+    `ALTER TABLE brain_nodes ADD COLUMN valid_from TEXT`,
+    `ALTER TABLE brain_nodes ADD COLUMN valid_to TEXT`,
+    `ALTER TABLE brain_nodes ADD COLUMN status TEXT DEFAULT 'active'`,
+    `ALTER TABLE brain_nodes ADD COLUMN confidence REAL DEFAULT 1.0`,
+    `ALTER TABLE brain_nodes ADD COLUMN superseded_by TEXT`,
+  ];
+
+  for (const sql of alters) {
+    try {
+      await db.prepare(sql).run();
+    } catch (e) {
+      // Column already exists — safe to skip
+      if (!(e as Error).message.includes('duplicate column')) throw e;
+    }
+  }
+
+  // Backfill existing nodes: set valid_from = created_at, status = active
+  await db.prepare(
+    `UPDATE brain_nodes SET valid_from = created_at, status = 'active' WHERE valid_from IS NULL`
+  ).run();
+
+  // New indexes for temporal queries
+  await db.batch([
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_status ON brain_nodes(status)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_valid_from ON brain_nodes(valid_from)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_nodes_confidence ON brain_nodes(confidence)`),
+  ]);
+}
