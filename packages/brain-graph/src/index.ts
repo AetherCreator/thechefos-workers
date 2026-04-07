@@ -5,6 +5,7 @@ import { buildNodeQuery, buildCountQuery, buildGraphQuery, NodeRow, ConnectionRo
 import { generateAndPushCognitiveCache, getFileContent, putFileContent } from './cognitive-cache';
 import { generateRule } from './rule-generator';
 import type { GraduatedPattern } from './rule-generator';
+import { registerTemporalEndpoints } from './temporal';
 
 export interface Env {
   BRAIN_DB: D1Database;
@@ -102,6 +103,9 @@ app.use('*', async (c, next) => {
   c.res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-github-token');
 });
 
+// Archivist: Register temporal endpoints (migrate, supersede, history)
+registerTemporalEndpoints(app);
+
 // POST /migrate — create tables
 app.post('/migrate', async (c) => {
   try {
@@ -137,6 +141,10 @@ app.get('/query', async (c) => {
     limit: c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : undefined,
     offset: c.req.query('offset') ? parseInt(c.req.query('offset')!, 10) : undefined,
     insights_only: c.req.query('insights_only') === 'true',
+    // Archivist: temporal query params
+    include_superseded: c.req.query('include_superseded') === 'true',
+    as_of: c.req.query('as_of'),
+    temporal_enabled: c.req.query('temporal') === 'true',
   };
 
   try {
@@ -308,7 +316,6 @@ app.post('/connect', async (c) => {
 app.get('/patterns/scan', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
-    // Strategy 1: Find node types that span multiple domains
     const typeDomainResult = await db.prepare(`
       SELECT type, COUNT(DISTINCT domain) as domain_count, COUNT(*) as node_count,
              GROUP_CONCAT(DISTINCT domain) as domains
@@ -318,7 +325,6 @@ app.get('/patterns/scan', async (c) => {
       ORDER BY domain_count DESC, node_count DESC
     `).all<{ type: string; domain_count: number; node_count: number; domains: string }>();
 
-    // Strategy 2: Find domains that share the same node types (domain overlap)
     const domainOverlapResult = await db.prepare(`
       SELECT a.domain as domain_a, b.domain as domain_b, COUNT(DISTINCT a.type) as shared_types
       FROM brain_nodes a
@@ -328,15 +334,12 @@ app.get('/patterns/scan', async (c) => {
       ORDER BY shared_types DESC
     `).all<{ domain_a: string; domain_b: string; shared_types: number }>();
 
-    // Strategy 3: Check existing patterns in brain_patterns table
     const existingPatterns = await db.prepare(
       "SELECT * FROM brain_patterns ORDER BY first_seen DESC"
     ).all<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string; graduated_at: string | null }>();
 
-    // Build candidates from type-domain analysis
     const candidates = typeDomainResult.results.map((row) => {
       const domains = row.domains.split(',');
-      // Score: domain spread * 3 + log of node count, capped
       const score = row.domain_count * 3 + Math.min(Math.floor(Math.log2(row.node_count + 1)) * 2, 8);
       return {
         name: `cross-domain-${row.type}`,
@@ -350,7 +353,6 @@ app.get('/patterns/scan', async (c) => {
       };
     });
 
-    // Get total scanned + graduated count
     const [totalResult, graduatedResult] = await Promise.all([
       db.prepare('SELECT COUNT(*) as total FROM brain_nodes').first<{ total: number }>(),
       db.prepare("SELECT COUNT(*) as count FROM brain_patterns WHERE status = 'graduated'").first<{ count: number }>(),
@@ -374,16 +376,13 @@ app.get('/patterns/scan', async (c) => {
 });
 
 // GET /patterns/ready — graduation-ready candidates with full context
-// Graduation criteria: 3+ nodes, 2+ domains, all within 90 days, not already graduated
 app.get('/patterns/ready', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
-    // Strategy 1: Check existing brain_patterns candidates
     const existingCandidates = await db.prepare(
       "SELECT * FROM brain_patterns WHERE status = 'candidate' ORDER BY first_seen DESC"
     ).all<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string; graduated_at: string | null }>();
 
-    // Strategy 2: Dynamically detect patterns — types spanning 2+ domains with 3+ active nodes
     const dynamicPatterns = await db.prepare(`
       SELECT type,
              COUNT(DISTINCT domain) as domain_count,
@@ -410,14 +409,11 @@ app.get('/patterns/ready', async (c) => {
       first_seen: string;
     }> = [];
 
-    // Process existing candidates from brain_patterns
     for (const pattern of existingCandidates.results) {
       const nodeIds = JSON.parse(pattern.node_ids || '[]') as string[];
       const domains = JSON.parse(pattern.domains || '[]') as string[];
-
       if (domains.length < 2) continue;
 
-      // Fetch contributing nodes (only active within 90 days)
       let nodes: NodeRow[] = [];
       if (nodeIds.length > 0) {
         const placeholders = nodeIds.map(() => '?').join(',');
@@ -426,7 +422,6 @@ app.get('/patterns/ready', async (c) => {
         ).bind(...nodeIds).all<NodeRow>();
         nodes = result.results;
       }
-
       if (nodes.length < 3) continue;
 
       candidates.push({
@@ -446,11 +441,8 @@ app.get('/patterns/ready', async (c) => {
       });
     }
 
-    // Process dynamically detected patterns
     for (const row of dynamicPatterns.results) {
       const patternId = `pattern-cross-domain-${row.type.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-
-      // Skip if already in candidates or already graduated
       if (candidates.some((c) => c.pattern_id === patternId)) continue;
       const graduated = await db.prepare(
         "SELECT id FROM brain_patterns WHERE id = ? AND status = 'graduated'"
@@ -458,7 +450,6 @@ app.get('/patterns/ready', async (c) => {
       if (graduated) continue;
 
       const domains = row.domains.split(',');
-
       const nodesResult = await db.prepare(`
         SELECT * FROM brain_nodes
         WHERE type = ? AND updated_at >= date('now', '-90 days')
@@ -469,7 +460,6 @@ app.get('/patterns/ready', async (c) => {
       if (nodes.length < 3) continue;
 
       const name = `cross-domain-${row.type}`;
-
       candidates.push({
         pattern_id: patternId,
         name,
@@ -490,11 +480,7 @@ app.get('/patterns/ready', async (c) => {
     return c.json({
       candidates,
       total: candidates.length,
-      graduation_criteria: {
-        min_nodes: 3,
-        min_domains: 2,
-        max_age_days: 90,
-      },
+      graduation_criteria: { min_nodes: 3, min_domains: 2, max_age_days: 90 },
       scanned_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -502,16 +488,11 @@ app.get('/patterns/ready', async (c) => {
   }
 });
 
-// POST /patterns/graduate — promote a candidate pattern to graduated
+// POST /patterns/graduate
 app.post('/patterns/graduate', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
-    const body = await c.req.json<{
-      name: string;
-      domains: string[];
-      node_ids?: string[];
-    }>();
-
+    const body = await c.req.json<{ name: string; domains: string[]; node_ids?: string[] }>();
     if (!body.name || !body.domains || body.domains.length < 2) {
       return c.json({ error: 'name and domains (2+ required) are required' }, 400);
     }
@@ -519,41 +500,18 @@ app.post('/patterns/graduate', async (c) => {
     const id = `pattern-${body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
     const now = new Date().toISOString();
 
-    // Check if pattern already exists
-    const existing = await db.prepare('SELECT * FROM brain_patterns WHERE id = ?')
-      .bind(id)
-      .first();
-
+    const existing = await db.prepare('SELECT * FROM brain_patterns WHERE id = ?').bind(id).first();
     if (existing) {
-      // Update to graduated
-      await db.prepare(
-        "UPDATE brain_patterns SET status = 'graduated', graduated_at = ? WHERE id = ?"
-      ).bind(now, id).run();
+      await db.prepare("UPDATE brain_patterns SET status = 'graduated', graduated_at = ? WHERE id = ?").bind(now, id).run();
     } else {
-      // Insert as graduated
       await db.prepare(
-        `INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at)
-         VALUES (?, ?, ?, ?, 'graduated', ?, ?)`
-      ).bind(
-        id,
-        body.name,
-        JSON.stringify(body.domains),
-        JSON.stringify(body.node_ids || []),
-        now,
-        now,
-      ).run();
+        `INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at) VALUES (?, ?, ?, ?, 'graduated', ?, ?)`
+      ).bind(id, body.name, JSON.stringify(body.domains), JSON.stringify(body.node_ids || []), now, now).run();
     }
 
     return c.json({
       success: true,
-      pattern: {
-        id,
-        name: body.name,
-        domains: body.domains,
-        node_ids: body.node_ids || [],
-        status: 'graduated',
-        graduated_at: now,
-      },
+      pattern: { id, name: body.name, domains: body.domains, node_ids: body.node_ids || [], status: 'graduated', graduated_at: now },
     });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
@@ -561,40 +519,28 @@ app.post('/patterns/graduate', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Instinct Pipeline: Approval Gate + Push (Hunt 7, Clue 3)
+// Instinct Pipeline: Approval Gate + Push
 // ---------------------------------------------------------------------------
 
-// GET /instinct/pending — graduation-ready patterns with generated rule previews
-// This is what Tyler reviews before approving. NO auto-push.
 app.get('/instinct/pending', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
-    // Reuse the /patterns/ready logic to find candidates
     const existingCandidates = await db.prepare(
       "SELECT * FROM brain_patterns WHERE status = 'candidate' ORDER BY first_seen DESC"
     ).all<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string; graduated_at: string | null }>();
 
     const dynamicPatterns = await db.prepare(`
-      SELECT type,
-             COUNT(DISTINCT domain) as domain_count,
-             COUNT(*) as node_count,
-             GROUP_CONCAT(DISTINCT domain) as domains
-      FROM brain_nodes
-      WHERE updated_at >= date('now', '-90 days')
-      GROUP BY type
-      HAVING domain_count >= 2 AND node_count >= 3
+      SELECT type, COUNT(DISTINCT domain) as domain_count, COUNT(*) as node_count, GROUP_CONCAT(DISTINCT domain) as domains
+      FROM brain_nodes WHERE updated_at >= date('now', '-90 days')
+      GROUP BY type HAVING domain_count >= 2 AND node_count >= 3
       ORDER BY domain_count DESC, node_count DESC
     `).all<{ type: string; domain_count: number; node_count: number; domains: string }>();
 
     const pending: Array<{
-      pattern_id: string;
-      name: string;
-      domains: string[];
-      node_count: number;
+      pattern_id: string; name: string; domains: string[]; node_count: number;
       rule_previews: Array<{ filename: string; content: string; target_repo: string; target_path: string }>;
     }> = [];
 
-    // Process existing candidates
     for (const pattern of existingCandidates.results) {
       const nodeIds = JSON.parse(pattern.node_ids || '[]') as string[];
       const domains = JSON.parse(pattern.domains || '[]') as string[];
@@ -611,67 +557,37 @@ app.get('/instinct/pending', async (c) => {
       if (nodes.length < 3) continue;
 
       const graduated: GraduatedPattern = {
-        pattern_id: pattern.id,
-        name: pattern.name,
+        pattern_id: pattern.id, name: pattern.name,
         description: `Cross-domain pattern spanning ${domains.join(', ')}`,
-        domains,
-        contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
+        domains, contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
       };
-
       const ruleFiles = generateRule(graduated);
-
-      pending.push({
-        pattern_id: pattern.id,
-        name: pattern.name,
-        domains,
-        node_count: nodes.length,
-        rule_previews: ruleFiles,
-      });
+      pending.push({ pattern_id: pattern.id, name: pattern.name, domains, node_count: nodes.length, rule_previews: ruleFiles });
     }
 
-    // Process dynamic patterns
     for (const row of dynamicPatterns.results) {
       const patternId = `pattern-cross-domain-${row.type.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
       if (pending.some((p) => p.pattern_id === patternId)) continue;
-
-      const graduated = await db.prepare(
-        "SELECT id FROM brain_patterns WHERE id = ? AND status = 'graduated'"
-      ).bind(patternId).first();
+      const graduated = await db.prepare("SELECT id FROM brain_patterns WHERE id = ? AND status = 'graduated'").bind(patternId).first();
       if (graduated) continue;
 
       const domains = row.domains.split(',');
-      const nodesResult = await db.prepare(`
-        SELECT * FROM brain_nodes
-        WHERE type = ? AND updated_at >= date('now', '-90 days')
-        ORDER BY connection_count DESC LIMIT 20
-      `).bind(row.type).all<NodeRow>();
-
+      const nodesResult = await db.prepare(`SELECT * FROM brain_nodes WHERE type = ? AND updated_at >= date('now', '-90 days') ORDER BY connection_count DESC LIMIT 20`).bind(row.type).all<NodeRow>();
       const nodes = nodesResult.results;
       if (nodes.length < 3) continue;
 
       const name = `cross-domain-${row.type}`;
       const graduatedPattern: GraduatedPattern = {
-        pattern_id: patternId,
-        name,
+        pattern_id: patternId, name,
         description: `${row.type} nodes span ${domains.join(', ')}`,
-        domains,
-        contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
+        domains, contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
       };
-
       const ruleFiles = generateRule(graduatedPattern);
-
-      pending.push({
-        pattern_id: patternId,
-        name,
-        domains,
-        node_count: nodes.length,
-        rule_previews: ruleFiles,
-      });
+      pending.push({ pattern_id: patternId, name, domains, node_count: nodes.length, rule_previews: ruleFiles });
     }
 
     return c.json({
-      pending,
-      total: pending.length,
+      pending, total: pending.length,
       message: pending.length > 0
         ? `${pending.length} pattern(s) ready for graduation — review rule previews and POST /instinct/graduate to approve or reject.`
         : 'No patterns currently meet graduation criteria.',
@@ -682,171 +598,90 @@ app.get('/instinct/pending', async (c) => {
   }
 });
 
-// POST /instinct/graduate — approve or reject a pattern
-// Body: { pattern_id, approved: boolean, target_repo?, rule_path?, edits? }
-// If approved: push rule file to target repo's .claude/rules/ via GitHub API
-// If rejected: archive the pattern in D1
 app.post('/instinct/graduate', async (c) => {
   const db = c.env.BRAIN_DB;
   const token = c.env.GITHUB_TOKEN;
-
   try {
-    const body = await c.req.json<{
-      pattern_id: string;
-      approved: boolean;
-      target_repo?: string;
-      rule_path?: string;
-      edits?: string; // Tyler's edited rule content
-    }>();
-
-    if (!body.pattern_id) {
-      return c.json({ error: 'pattern_id is required' }, 400);
-    }
-
+    const body = await c.req.json<{ pattern_id: string; approved: boolean; target_repo?: string; rule_path?: string; edits?: string }>();
+    if (!body.pattern_id) return c.json({ error: 'pattern_id is required' }, 400);
     const now = new Date().toISOString();
 
-    // --- REJECTION PATH ---
     if (!body.approved) {
-      // Check if pattern exists in brain_patterns
-      const existing = await db.prepare('SELECT id FROM brain_patterns WHERE id = ?')
-        .bind(body.pattern_id).first();
-
+      const existing = await db.prepare('SELECT id FROM brain_patterns WHERE id = ?').bind(body.pattern_id).first();
       if (existing) {
-        await db.prepare(
-          "UPDATE brain_patterns SET status = 'archived', graduated_at = ? WHERE id = ?"
-        ).bind(now, body.pattern_id).run();
+        await db.prepare("UPDATE brain_patterns SET status = 'archived', graduated_at = ? WHERE id = ?").bind(now, body.pattern_id).run();
       } else {
-        // Insert as archived so it doesn't resurface
-        await db.prepare(
-          `INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at)
-           VALUES (?, ?, '[]', '[]', 'archived', ?, ?)`
-        ).bind(body.pattern_id, body.pattern_id, now, now).run();
+        await db.prepare(`INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at) VALUES (?, ?, '[]', '[]', 'archived', ?, ?)`).bind(body.pattern_id, body.pattern_id, now, now).run();
       }
-
-      return c.json({
-        success: true,
-        action: 'archived',
-        pattern_id: body.pattern_id,
-        archived_at: now,
-      });
+      return c.json({ success: true, action: 'archived', pattern_id: body.pattern_id, archived_at: now });
     }
 
-    // --- APPROVAL PATH ---
-    if (!token) {
-      return c.json({ error: 'GITHUB_TOKEN not configured — cannot push rule files' }, 500);
-    }
+    if (!token) return c.json({ error: 'GITHUB_TOKEN not configured — cannot push rule files' }, 500);
 
-    // Find the pattern and generate rule files
-    const patternRow = await db.prepare('SELECT * FROM brain_patterns WHERE id = ?')
-      .bind(body.pattern_id)
+    const patternRow = await db.prepare('SELECT * FROM brain_patterns WHERE id = ?').bind(body.pattern_id)
       .first<{ id: string; name: string; domains: string; node_ids: string; status: string; first_seen: string }>();
 
     let ruleFiles: Array<{ filename: string; content: string; target_repo: string; target_path: string }>;
 
     if (body.edits && body.target_repo && body.rule_path) {
-      // Tyler provided edited content — use that directly
-      ruleFiles = [{
-        filename: body.rule_path.split('/').pop() || 'instinct-rule.md',
-        content: body.edits,
-        target_repo: body.target_repo,
-        target_path: body.rule_path,
-      }];
+      ruleFiles = [{ filename: body.rule_path.split('/').pop() || 'instinct-rule.md', content: body.edits, target_repo: body.target_repo, target_path: body.rule_path }];
     } else if (patternRow) {
-      // Generate from pattern data
       const nodeIds = JSON.parse(patternRow.node_ids || '[]') as string[];
       const domains = JSON.parse(patternRow.domains || '[]') as string[];
-
       let nodes: NodeRow[] = [];
       if (nodeIds.length > 0) {
         const placeholders = nodeIds.map(() => '?').join(',');
-        const result = await db.prepare(
-          `SELECT * FROM brain_nodes WHERE id IN (${placeholders})`
-        ).bind(...nodeIds).all<NodeRow>();
+        const result = await db.prepare(`SELECT * FROM brain_nodes WHERE id IN (${placeholders})`).bind(...nodeIds).all<NodeRow>();
         nodes = result.results;
       }
-
       const graduated: GraduatedPattern = {
-        pattern_id: patternRow.id,
-        name: patternRow.name,
+        pattern_id: patternRow.id, name: patternRow.name,
         description: `Cross-domain pattern spanning ${domains.join(', ')}`,
-        domains,
-        contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
+        domains, contributing_nodes: nodes.map((n) => ({ id: n.id, title: n.title, domain: n.domain, type: n.type })),
       };
-
       ruleFiles = generateRule(graduated);
-
-      // If target_repo specified, filter to just that repo
-      if (body.target_repo) {
-        ruleFiles = ruleFiles.filter((r) => r.target_repo === body.target_repo);
-      }
+      if (body.target_repo) ruleFiles = ruleFiles.filter((r) => r.target_repo === body.target_repo);
     } else {
       return c.json({ error: `Pattern ${body.pattern_id} not found in brain_patterns` }, 404);
     }
 
-    // Push each rule file to its target repo via GitHub API
     const pushResults: Array<{ repo: string; path: string; success: boolean; sha?: string; error?: string }> = [];
-
     for (const rule of ruleFiles) {
       try {
-        // Check if file already exists (SHA-based update for safety)
         const existing = await getFileContent(token, rule.target_repo, rule.target_path);
         const sha = existing?.sha || null;
-
         const commitMsg = `chore: graduate instinct rule — ${rule.filename} (${now.split('T')[0]})`;
         const newSha = await putFileContent(token, rule.target_repo, rule.target_path, rule.content, sha, commitMsg);
-
         pushResults.push({ repo: rule.target_repo, path: rule.target_path, success: true, sha: newSha });
       } catch (e) {
         pushResults.push({ repo: rule.target_repo, path: rule.target_path, success: false, error: (e as Error).message });
       }
     }
 
-    // Update pattern status in D1
-    const existingPattern = await db.prepare('SELECT id FROM brain_patterns WHERE id = ?')
-      .bind(body.pattern_id).first();
-
+    const existingPattern = await db.prepare('SELECT id FROM brain_patterns WHERE id = ?').bind(body.pattern_id).first();
     if (existingPattern) {
-      await db.prepare(
-        "UPDATE brain_patterns SET status = 'graduated', graduated_at = ? WHERE id = ?"
-      ).bind(now, body.pattern_id).run();
+      await db.prepare("UPDATE brain_patterns SET status = 'graduated', graduated_at = ? WHERE id = ?").bind(now, body.pattern_id).run();
     } else {
-      await db.prepare(
-        `INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at)
-         VALUES (?, ?, '[]', '[]', 'graduated', ?, ?)`
-      ).bind(body.pattern_id, body.pattern_id, now, now).run();
+      await db.prepare(`INSERT INTO brain_patterns (id, name, domains, node_ids, status, first_seen, graduated_at) VALUES (?, ?, '[]', '[]', 'graduated', ?, ?)`).bind(body.pattern_id, body.pattern_id, now, now).run();
     }
 
     return c.json({
-      success: true,
-      action: 'graduated',
-      pattern_id: body.pattern_id,
-      graduated_at: now,
-      push_results: pushResults,
-      rules_pushed: pushResults.filter((r) => r.success).length,
-      rules_failed: pushResults.filter((r) => !r.success).length,
+      success: true, action: 'graduated', pattern_id: body.pattern_id, graduated_at: now,
+      push_results: pushResults, rules_pushed: pushResults.filter((r) => r.success).length, rules_failed: pushResults.filter((r) => !r.success).length,
     });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
 });
 
-// GET /ops/vitals — comprehensive system health stats
+// ---------------------------------------------------------------------------
+// OPS Vitals
+// ---------------------------------------------------------------------------
+
 app.get('/ops/vitals', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
-    const [
-      totalResult,
-      domainResult,
-      typeResult,
-      connResult,
-      insightResult,
-      patternResult,
-      recent7dResult,
-      oldestResult,
-      newestResult,
-      topConnectedResult,
-      isolatedResult,
-    ] = await Promise.all([
+    const [totalResult, domainResult, typeResult, connResult, insightResult, patternResult, recent7dResult, oldestResult, newestResult, topConnectedResult, isolatedResult] = await Promise.all([
       db.prepare('SELECT COUNT(*) as total FROM brain_nodes').first<{ total: number }>(),
       db.prepare('SELECT domain, COUNT(*) as count FROM brain_nodes GROUP BY domain ORDER BY count DESC').all<{ domain: string; count: number }>(),
       db.prepare('SELECT type, COUNT(*) as count FROM brain_nodes GROUP BY type ORDER BY count DESC').all<{ type: string; count: number }>(),
@@ -866,64 +701,21 @@ app.get('/ops/vitals', async (c) => {
     const isolatedCount = isolatedResult?.count || 0;
 
     const byDomain: Record<string, number> = {};
-    let leastCovered = '';
-    let leastCount = Infinity;
-    for (const row of domainResult.results) {
-      byDomain[row.domain] = row.count;
-      if (row.count < leastCount) {
-        leastCount = row.count;
-        leastCovered = row.domain;
-      }
-    }
-
+    let leastCovered = ''; let leastCount = Infinity;
+    for (const row of domainResult.results) { byDomain[row.domain] = row.count; if (row.count < leastCount) { leastCount = row.count; leastCovered = row.domain; } }
     const byType: Record<string, number> = {};
-    for (const row of typeResult.results) {
-      byType[row.type] = row.count;
-    }
-
+    for (const row of typeResult.results) { byType[row.type] = row.count; }
     const patternsByStatus: Record<string, number> = {};
-    for (const row of patternResult.results) {
-      patternsByStatus[row.status] = row.count;
-    }
+    for (const row of patternResult.results) { patternsByStatus[row.status] = row.count; }
 
     return c.json({
-      brain: {
-        total_nodes: totalNodes,
-        total_connections: totalConnections,
-        insight_count: insightCount,
-        insight_ratio: totalNodes > 0 ? Math.round((insightCount / totalNodes) * 100) / 100 : 0,
-        avg_connections: totalNodes > 0 ? Math.round((totalConnections / totalNodes) * 100) / 100 : 0,
-        isolated_nodes: isolatedCount,
-        isolation_pct: totalNodes > 0 ? Math.round((isolatedCount / totalNodes) * 100) : 0,
-      },
-      domains: {
-        count: domainResult.results.length,
-        distribution: byDomain,
-        least_covered: leastCovered,
-        least_covered_count: leastCount === Infinity ? 0 : leastCount,
-      },
-      types: {
-        count: typeResult.results.length,
-        distribution: byType,
-      },
-      patterns: {
-        by_status: patternsByStatus,
-        candidates: patternsByStatus['candidate'] || 0,
-        graduated: patternsByStatus['graduated'] || 0,
-      },
-      activity: {
-        nodes_last_7d: recent7dResult?.count || 0,
-        oldest_node: oldestResult?.oldest || null,
-        newest_node: newestResult?.newest || null,
-      },
+      brain: { total_nodes: totalNodes, total_connections: totalConnections, insight_count: insightCount, insight_ratio: totalNodes > 0 ? Math.round((insightCount / totalNodes) * 100) / 100 : 0, avg_connections: totalNodes > 0 ? Math.round((totalConnections / totalNodes) * 100) / 100 : 0, isolated_nodes: isolatedCount, isolation_pct: totalNodes > 0 ? Math.round((isolatedCount / totalNodes) * 100) : 0 },
+      domains: { count: domainResult.results.length, distribution: byDomain, least_covered: leastCovered, least_covered_count: leastCount === Infinity ? 0 : leastCount },
+      types: { count: typeResult.results.length, distribution: byType },
+      patterns: { by_status: patternsByStatus, candidates: patternsByStatus['candidate'] || 0, graduated: patternsByStatus['graduated'] || 0 },
+      activity: { nodes_last_7d: recent7dResult?.count || 0, oldest_node: oldestResult?.oldest || null, newest_node: newestResult?.newest || null },
       top_connected: topConnectedResult.results,
-      health: {
-        status: totalNodes > 0 ? 'healthy' : 'empty',
-        node_count_ok: totalNodes >= 100,
-        domains_ok: domainResult.results.length >= 5,
-        has_insights: insightCount > 0,
-        has_connections: totalConnections > 0,
-      },
+      health: { status: totalNodes > 0 ? 'healthy' : 'empty', node_count_ok: totalNodes >= 100, domains_ok: domainResult.results.length >= 5, has_insights: insightCount > 0, has_connections: totalConnections > 0 },
       generated_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -931,169 +723,70 @@ app.get('/ops/vitals', async (c) => {
   }
 });
 
-
 // ---------------------------------------------------------------------------
 // Session Usage Tracking + Odometer
 // ---------------------------------------------------------------------------
 
-interface OdometerRow {
-  id: string;
-  current_pct: number;
-  last_updated: string;
-  session_current_pct: number;
-  session_last_updated: string;
-  session_last_id: string | null;
-  weekly_current_pct: number;
-  weekly_reset_at: string;
-  weekly_last_updated: string | null;
-}
+interface OdometerRow { id: string; current_pct: number; last_updated: string; session_current_pct: number; session_last_updated: string; session_last_id: string | null; weekly_current_pct: number; weekly_reset_at: string; weekly_last_updated: string | null; }
+interface SessionUsageBody { date: string; surface: string; session_type: string; usage_pct?: number; msg_count?: number; mcp_count?: number; retry_loops?: number; note?: string; }
+export interface SessionUsageRow { id: string; date: string; surface: string; session_type: string; msg_count: number | null; usage_pct: number | null; baseline_pct: number | null; burn_pct: number | null; mcp_count: number | null; retry_loops: number; note: string | null; created_at: string; }
 
-interface SessionUsageBody {
-  date: string;
-  surface: string;
-  session_type: string;
-  usage_pct?: number;
-  msg_count?: number;
-  mcp_count?: number;
-  retry_loops?: number;
-  note?: string;
-}
-
-export interface SessionUsageRow {
-  id: string;
-  date: string;
-  surface: string;
-  session_type: string;
-  msg_count: number | null;
-  usage_pct: number | null;
-  baseline_pct: number | null;
-  burn_pct: number | null;
-  mcp_count: number | null;
-  retry_loops: number;
-  note: string | null;
-  created_at: string;
-}
-
-// GET /session/odometer — current odometer state with auto-reset logic
 app.get('/session/odometer', async (c) => {
   const db = c.env.BRAIN_DB;
-  const row = await db.prepare('SELECT * FROM usage_odometer WHERE id = ?')
-    .bind('singleton').first<OdometerRow>();
+  const row = await db.prepare('SELECT * FROM usage_odometer WHERE id = ?').bind('singleton').first<OdometerRow>();
   if (!row) return c.json({ error: 'Odometer not initialized' }, 500);
-
   const now = new Date();
   const lastUpdated = new Date(row.session_last_updated || row.last_updated);
   const hoursSinceLast = (now.getTime() - lastUpdated.getTime()) / 3_600_000;
   const windowRolled = hoursSinceLast >= 5;
-
-  return c.json({
-    session: {
-      current_pct: windowRolled ? 0 : row.session_current_pct,
-      window_rolled: windowRolled,
-      hours_since_last: Math.round(hoursSinceLast * 10) / 10,
-      last_updated: row.session_last_updated || row.last_updated,
-    },
-    weekly: {
-      current_pct: row.weekly_current_pct,
-      reset_at: row.weekly_reset_at,
-    },
-  });
+  return c.json({ session: { current_pct: windowRolled ? 0 : row.session_current_pct, window_rolled: windowRolled, hours_since_last: Math.round(hoursSinceLast * 10) / 10, last_updated: row.session_last_updated || row.last_updated }, weekly: { current_pct: row.weekly_current_pct, reset_at: row.weekly_reset_at } });
 });
 
-// POST /session/odometer/weekly-reset — reset weekly counter
 app.post('/session/odometer/weekly-reset', async (c) => {
   const now = new Date().toISOString();
-  await c.env.BRAIN_DB.prepare(
-    'UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?'
-  ).bind(now, now, 'singleton').run();
+  await c.env.BRAIN_DB.prepare('UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?').bind(now, now, 'singleton').run();
   return c.json({ ok: true, reset_at: now });
 });
 
-// POST /session/usage — log a session with full odometer logic
 app.post('/session/usage', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
     const body = await c.req.json<SessionUsageBody>();
-
-    // Validation
     const validSurfaces = ['chat', 'code', 'dispatch'];
     const validTypes = ['infra', 'code-gen', 'planning', 'mixed'];
-    if (!body.date || !body.surface || !body.session_type)
-      return c.json({ error: 'date, surface, session_type required' }, 400);
-    if (!validSurfaces.includes(body.surface))
-      return c.json({ error: `surface must be one of: ${validSurfaces.join(', ')}` }, 400);
-    if (!validTypes.includes(body.session_type))
-      return c.json({ error: `session_type must be one of: ${validTypes.join(', ')}` }, 400);
+    if (!body.date || !body.surface || !body.session_type) return c.json({ error: 'date, surface, session_type required' }, 400);
+    if (!validSurfaces.includes(body.surface)) return c.json({ error: `surface must be one of: ${validSurfaces.join(', ')}` }, 400);
+    if (!validTypes.includes(body.session_type)) return c.json({ error: `session_type must be one of: ${validTypes.join(', ')}` }, 400);
 
-    // 1. Read odometer
-    const odometer = await db.prepare('SELECT * FROM usage_odometer WHERE id = ?')
-      .bind('singleton').first<OdometerRow>();
-
+    const odometer = await db.prepare('SELECT * FROM usage_odometer WHERE id = ?').bind('singleton').first<OdometerRow>();
     const now = new Date();
     const usage_pct: number | null = body.usage_pct ?? null;
-
-    // 2. Passive 5hr reset — infer from silence
-    const lastUpdated = new Date(
-      odometer?.session_last_updated || odometer?.last_updated || now.toISOString()
-    );
+    const lastUpdated = new Date(odometer?.session_last_updated || odometer?.last_updated || now.toISOString());
     const hoursSinceLast = (now.getTime() - lastUpdated.getTime()) / 3_600_000;
     const windowRolled = hoursSinceLast >= 5;
     const baseline_pct = windowRolled ? 0 : (odometer?.session_current_pct ?? 0);
-
-    // 3. Compute burn (clamp to 0 — can't burn negative)
     const burn_pct = usage_pct !== null ? Math.max(0, usage_pct - baseline_pct) : null;
 
-    // 4. Insert session row
     const id = `sess-${body.date}-${Date.now().toString(36)}`;
     const nowIso = now.toISOString();
+    await db.prepare(`INSERT INTO session_usage (id, date, surface, session_type, msg_count, usage_pct, baseline_pct, burn_pct, mcp_count, retry_loops, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, body.date, body.surface, body.session_type, body.msg_count ?? null, usage_pct, baseline_pct, burn_pct, body.mcp_count ?? null, body.retry_loops ?? 0, body.note ?? null, nowIso).run();
 
-    await db.prepare(
-      `INSERT INTO session_usage
-       (id, date, surface, session_type, msg_count, usage_pct, baseline_pct, burn_pct,
-        mcp_count, retry_loops, note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      id, body.date, body.surface, body.session_type,
-      body.msg_count ?? null, usage_pct, baseline_pct, burn_pct,
-      body.mcp_count ?? null, body.retry_loops ?? 0, body.note ?? null, nowIso
-    ).run();
-
-    // 5. Update odometer — session window
     const newSessionPct = usage_pct ?? baseline_pct;
-
-    // 6. Weekly accumulation — add burn to weekly total
     const newWeeklyPct = (odometer?.weekly_current_pct ?? 0) + (burn_pct ?? 0);
+    await db.prepare(`UPDATE usage_odometer SET session_current_pct=?, session_last_updated=?, session_last_id=?, weekly_current_pct=?, weekly_last_updated=? WHERE id=?`).bind(newSessionPct, nowIso, id, newWeeklyPct, nowIso, 'singleton').run();
 
-    await db.prepare(
-      `UPDATE usage_odometer SET
-         session_current_pct=?, session_last_updated=?, session_last_id=?,
-         weekly_current_pct=?, weekly_last_updated=?
-       WHERE id=?`
-    ).bind(newSessionPct, nowIso, id, newWeeklyPct, nowIso, 'singleton').run();
-
-    // 7. Flags
     const flags: string[] = [];
     if (windowRolled) flags.push('5hr window rolled — baseline reset to 0%');
     if (burn_pct !== null && burn_pct >= 8) flags.push('high-burn session — consider fresh context next time');
     if (usage_pct !== null && usage_pct >= 85) flags.push('approaching session limit — fresh session recommended');
     if (newWeeklyPct >= 80) flags.push('weekly usage high — monitor toward limit');
 
-    return c.json({
-      ok: true, id,
-      burn_pct,
-      baseline_pct,
-      usage_pct,
-      window_rolled: windowRolled,
-      hours_since_last: Math.round(hoursSinceLast * 10) / 10,
-      weekly_total_pct: Math.round(newWeeklyPct * 10) / 10,
-      flags,
-    });
+    return c.json({ ok: true, id, burn_pct, baseline_pct, usage_pct, window_rolled: windowRolled, hours_since_last: Math.round(hoursSinceLast * 10) / 10, weekly_total_pct: Math.round(newWeeklyPct * 10) / 10, flags });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
 });
 
-// GET /session/usage — list sessions with optional filters
 app.get('/session/usage', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
@@ -1101,17 +794,13 @@ app.get('/session/usage', async (c) => {
     const session_type = c.req.query('session_type');
     const since = c.req.query('since');
     const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 200);
-
     let sql = 'SELECT * FROM session_usage WHERE 1=1';
     const bindings: (string | number)[] = [];
-
     if (surface) { sql += ' AND surface = ?'; bindings.push(surface); }
     if (session_type) { sql += ' AND session_type = ?'; bindings.push(session_type); }
     if (since) { sql += ' AND date >= ?'; bindings.push(since); }
-
     sql += ' ORDER BY date DESC, created_at DESC LIMIT ?';
     bindings.push(limit);
-
     const rows = await db.prepare(sql).bind(...bindings).all<SessionUsageRow>();
     return c.json({ sessions: rows.results, total: rows.results.length });
   } catch (e) {
@@ -1119,88 +808,24 @@ app.get('/session/usage', async (c) => {
   }
 });
 
-// GET /session/usage/summary — aggregated stats for pattern analysis
 app.get('/session/usage/summary', async (c) => {
   const db = c.env.BRAIN_DB;
   try {
-    const [
-      byTypeResult,
-      bySurfaceResult,
-      avgByTypeResult,
-      retryCorrelationResult,
-      totalResult,
-      burnByTypeResult,
-      odometerResult,
-    ] = await Promise.all([
-      db.prepare(`
-        SELECT session_type,
-               COUNT(*) as count,
-               AVG(usage_pct) as avg_usage_pct,
-               AVG(msg_count) as avg_msgs,
-               SUM(retry_loops) as total_retries
-        FROM session_usage
-        WHERE usage_pct IS NOT NULL
-        GROUP BY session_type
-        ORDER BY avg_usage_pct DESC
-      `).all<{ session_type: string; count: number; avg_usage_pct: number; avg_msgs: number; total_retries: number }>(),
-
-      db.prepare(`
-        SELECT surface,
-               COUNT(*) as count,
-               AVG(usage_pct) as avg_usage_pct
-        FROM session_usage
-        WHERE usage_pct IS NOT NULL
-        GROUP BY surface
-      `).all<{ surface: string; count: number; avg_usage_pct: number }>(),
-
-      db.prepare(`
-        SELECT session_type,
-               AVG(CASE WHEN mcp_count > 2 THEN usage_pct ELSE NULL END) as avg_high_mcp_usage,
-               AVG(CASE WHEN mcp_count <= 2 THEN usage_pct ELSE NULL END) as avg_low_mcp_usage
-        FROM session_usage
-        WHERE usage_pct IS NOT NULL AND mcp_count IS NOT NULL
-        GROUP BY session_type
-      `).all<{ session_type: string; avg_high_mcp_usage: number | null; avg_low_mcp_usage: number | null }>(),
-
-      db.prepare(`
-        SELECT
-          AVG(CASE WHEN retry_loops = 1 THEN usage_pct ELSE NULL END) as avg_usage_with_retries,
-          AVG(CASE WHEN retry_loops = 0 THEN usage_pct ELSE NULL END) as avg_usage_no_retries,
-          COUNT(CASE WHEN retry_loops = 1 THEN 1 END) as sessions_with_retries
-        FROM session_usage
-        WHERE usage_pct IS NOT NULL
-      `).first<{ avg_usage_with_retries: number | null; avg_usage_no_retries: number | null; sessions_with_retries: number }>(),
-
+    const [byTypeResult, bySurfaceResult, avgByTypeResult, retryCorrelationResult, totalResult, burnByTypeResult, odometerResult] = await Promise.all([
+      db.prepare(`SELECT session_type, COUNT(*) as count, AVG(usage_pct) as avg_usage_pct, AVG(msg_count) as avg_msgs, SUM(retry_loops) as total_retries FROM session_usage WHERE usage_pct IS NOT NULL GROUP BY session_type ORDER BY avg_usage_pct DESC`).all<{ session_type: string; count: number; avg_usage_pct: number; avg_msgs: number; total_retries: number }>(),
+      db.prepare(`SELECT surface, COUNT(*) as count, AVG(usage_pct) as avg_usage_pct FROM session_usage WHERE usage_pct IS NOT NULL GROUP BY surface`).all<{ surface: string; count: number; avg_usage_pct: number }>(),
+      db.prepare(`SELECT session_type, AVG(CASE WHEN mcp_count > 2 THEN usage_pct ELSE NULL END) as avg_high_mcp_usage, AVG(CASE WHEN mcp_count <= 2 THEN usage_pct ELSE NULL END) as avg_low_mcp_usage FROM session_usage WHERE usage_pct IS NOT NULL AND mcp_count IS NOT NULL GROUP BY session_type`).all<{ session_type: string; avg_high_mcp_usage: number | null; avg_low_mcp_usage: number | null }>(),
+      db.prepare(`SELECT AVG(CASE WHEN retry_loops = 1 THEN usage_pct ELSE NULL END) as avg_usage_with_retries, AVG(CASE WHEN retry_loops = 0 THEN usage_pct ELSE NULL END) as avg_usage_no_retries, COUNT(CASE WHEN retry_loops = 1 THEN 1 END) as sessions_with_retries FROM session_usage WHERE usage_pct IS NOT NULL`).first<{ avg_usage_with_retries: number | null; avg_usage_no_retries: number | null; sessions_with_retries: number }>(),
       db.prepare('SELECT COUNT(*) as total FROM session_usage').first<{ total: number }>(),
-
-      // Burn by session type
-      db.prepare(`
-        SELECT session_type,
-          COUNT(*) as count,
-          AVG(burn_pct) as avg_burn,
-          MAX(burn_pct) as max_burn,
-          SUM(burn_pct) as total_burn,
-          AVG(usage_pct) as avg_close_pct
-        FROM session_usage
-        WHERE burn_pct IS NOT NULL
-        GROUP BY session_type ORDER BY avg_burn DESC
-      `).all<{ session_type: string; count: number; avg_burn: number; max_burn: number; total_burn: number; avg_close_pct: number }>(),
-
-      // Current odometer state
+      db.prepare(`SELECT session_type, COUNT(*) as count, AVG(burn_pct) as avg_burn, MAX(burn_pct) as max_burn, SUM(burn_pct) as total_burn, AVG(usage_pct) as avg_close_pct FROM session_usage WHERE burn_pct IS NOT NULL GROUP BY session_type ORDER BY avg_burn DESC`).all<{ session_type: string; count: number; avg_burn: number; max_burn: number; total_burn: number; avg_close_pct: number }>(),
       db.prepare('SELECT * FROM usage_odometer WHERE id = ?').bind('singleton').first(),
     ]);
 
     return c.json({
-      total_sessions: totalResult?.total || 0,
-      by_type: byTypeResult.results,
-      by_surface: bySurfaceResult.results,
-      mcp_impact: avgByTypeResult.results,
-      retry_impact: retryCorrelationResult,
-      burn_by_type: burnByTypeResult.results,
-      odometer: odometerResult,
-      hypothesis_status: totalResult?.total && totalResult.total >= 5
-        ? 'accumulating_data'
-        : 'insufficient_data',
+      total_sessions: totalResult?.total || 0, by_type: byTypeResult.results, by_surface: bySurfaceResult.results,
+      mcp_impact: avgByTypeResult.results, retry_impact: retryCorrelationResult,
+      burn_by_type: burnByTypeResult.results, odometer: odometerResult,
+      hypothesis_status: totalResult?.total && totalResult.total >= 5 ? 'accumulating_data' : 'insufficient_data',
       generated_at: new Date().toISOString(),
     });
   } catch (e) {
@@ -1212,47 +837,33 @@ app.get('/session/usage/summary', async (c) => {
 // Dashboard + Health
 // ---------------------------------------------------------------------------
 
-// OPS cycle schedule — auto-advances, no deploy needed to update
 const OPS_CYCLES = [
-  { id: 'ops-01', name: 'Brain Foundation Audit',   start: '2026-03-22', end: '2026-03-31' },
-  { id: 'ops-02', name: 'Skill Inventory',          start: '2026-04-01', end: '2026-04-08' },
-  { id: 'ops-03', name: 'Pattern Graduation',       start: '2026-04-09', end: '2026-04-16' },
-  { id: 'ops-04', name: 'Domain Coverage',          start: '2026-04-17', end: '2026-04-24' },
-  { id: 'ops-05', name: 'Cross-Domain Bridges',     start: '2026-04-25', end: '2026-05-02' },
-  { id: 'ops-06', name: 'Architecture & Tooling',   start: '2026-05-03', end: '2026-05-10' },
-  { id: 'ops-07', name: 'Skill Autoresearch',       start: '2026-05-11', end: '2026-05-18' },
+  { id: 'ops-01', name: 'Brain Foundation Audit', start: '2026-03-22', end: '2026-03-31' },
+  { id: 'ops-02', name: 'Skill Inventory', start: '2026-04-01', end: '2026-04-08' },
+  { id: 'ops-03', name: 'Pattern Graduation', start: '2026-04-09', end: '2026-04-16' },
+  { id: 'ops-04', name: 'Domain Coverage', start: '2026-04-17', end: '2026-04-24' },
+  { id: 'ops-05', name: 'Cross-Domain Bridges', start: '2026-04-25', end: '2026-05-02' },
+  { id: 'ops-06', name: 'Architecture & Tooling', start: '2026-05-03', end: '2026-05-10' },
+  { id: 'ops-07', name: 'Skill Autoresearch', start: '2026-05-11', end: '2026-05-18' },
 ];
 
 function computeOpsCycle() {
   const today = new Date().toISOString().slice(0, 10);
-  const active = OPS_CYCLES.find(c => today >= c.start && today <= c.end)
-    ?? OPS_CYCLES[OPS_CYCLES.length - 1];
-  const startMs  = new Date(active.start).getTime();
-  const endMs    = new Date(active.end).getTime() + 86_400_000; // inclusive end-of-day
-  const nowMs    = Date.now();
-  const elapsed  = Math.max(0, nowMs - startMs);
+  const active = OPS_CYCLES.find(c => today >= c.start && today <= c.end) ?? OPS_CYCLES[OPS_CYCLES.length - 1];
+  const startMs = new Date(active.start).getTime();
+  const endMs = new Date(active.end).getTime() + 86_400_000;
+  const nowMs = Date.now();
+  const elapsed = Math.max(0, nowMs - startMs);
   const duration = endMs - startMs;
-  const completion_pct  = Math.min(100, Math.round((elapsed / duration) * 100));
-  const days_remaining  = Math.max(0, Math.ceil((endMs - nowMs) / 86_400_000));
+  const completion_pct = Math.min(100, Math.round((elapsed / duration) * 100));
+  const days_remaining = Math.max(0, Math.ceil((endMs - nowMs) / 86_400_000));
   return { cycle: active.id, name: active.name, completion_pct, days_remaining };
 }
 
-// GET /dashboard — aggregated view for brain dashboard
 app.get('/dashboard', async (c) => {
   try {
     const db = c.env.BRAIN_DB;
-
-    // Run all queries in parallel
-    const [
-      totalResult,
-      domainResult,
-      connResult,
-      insightResult,
-      recentNodesResult,
-      topConnectedResult,
-      patternsResult,
-      recentCountResult,
-    ] = await Promise.all([
+    const [totalResult, domainResult, connResult, insightResult, recentNodesResult, topConnectedResult, patternsResult, recentCountResult] = await Promise.all([
       db.prepare('SELECT COUNT(*) as total FROM brain_nodes').first<{ total: number }>(),
       db.prepare('SELECT domain, COUNT(*) as count FROM brain_nodes GROUP BY domain').all<{ domain: string; count: number }>(),
       db.prepare('SELECT COUNT(*) as total FROM brain_connections').first<{ total: number }>(),
@@ -1266,45 +877,16 @@ app.get('/dashboard', async (c) => {
     const totalNodes = totalResult?.total || 0;
     const totalConnections = connResult?.total || 0;
     const insightCount = insightResult?.count || 0;
-
     const byDomain: Record<string, number> = {};
-    let leastCovered = '';
-    let leastCount = Infinity;
-    for (const row of domainResult.results) {
-      byDomain[row.domain] = row.count;
-      if (row.count < leastCount) {
-        leastCount = row.count;
-        leastCovered = row.domain;
-      }
-    }
-
+    let leastCovered = ''; let leastCount = Infinity;
+    for (const row of domainResult.results) { byDomain[row.domain] = row.count; if (row.count < leastCount) { leastCount = row.count; leastCovered = row.domain; } }
     const graduatedCount = await db.prepare("SELECT COUNT(*) as count FROM brain_patterns WHERE status = 'graduated'").first<{ count: number }>();
 
     return c.json({
-      vitals: {
-        total_nodes: totalNodes,
-        by_domain: byDomain,
-        total_connections: totalConnections,
-        insight_ratio: totalNodes > 0 ? Math.round((insightCount / totalNodes) * 100) / 100 : 0,
-        least_covered: leastCovered,
-        nodes_last_7d: recentCountResult?.count || 0,
-      },
+      vitals: { total_nodes: totalNodes, by_domain: byDomain, total_connections: totalConnections, insight_ratio: totalNodes > 0 ? Math.round((insightCount / totalNodes) * 100) / 100 : 0, least_covered: leastCovered, nodes_last_7d: recentCountResult?.count || 0 },
       ops: computeOpsCycle(),
-      patterns: {
-        candidates: patternsResult.results.map((p) => ({
-          id: p.id,
-          name: p.name,
-          domains: JSON.parse(p.domains || '[]'),
-          node_ids: JSON.parse(p.node_ids || '[]'),
-          status: p.status,
-          first_seen: p.first_seen,
-        })),
-        graduated_count: graduatedCount?.count || 0,
-      },
-      session: null,
-      recent_nodes: recentNodesResult.results,
-      top_connected: topConnectedResult.results,
-      generated_at: new Date().toISOString(),
+      patterns: { candidates: patternsResult.results.map((p) => ({ id: p.id, name: p.name, domains: JSON.parse(p.domains || '[]'), node_ids: JSON.parse(p.node_ids || '[]'), status: p.status, first_seen: p.first_seen })), graduated_count: graduatedCount?.count || 0 },
+      session: null, recent_nodes: recentNodesResult.results, top_connected: topConnectedResult.results, generated_at: new Date().toISOString(),
     });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
@@ -1312,30 +894,25 @@ app.get('/dashboard', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// Cognitive Cache — generate and push to all repos
+// Cognitive Cache
 // ---------------------------------------------------------------------------
 
 app.post('/cognitive-cache/generate', async (c) => {
   const db = c.env.BRAIN_DB;
   const token = c.env.GITHUB_TOKEN;
-  if (!token) {
-    return c.json({ error: 'GITHUB_TOKEN not configured' }, 500);
-  }
+  if (!token) return c.json({ error: 'GITHUB_TOKEN not configured' }, 500);
   try {
     const result = await generateAndPushCognitiveCache(db, token);
-    return c.json({
-      success: true,
-      repos_updated: result.repos,
-      cache_size: result.cache_size,
-      generated_at: result.generated_at,
-    });
+    return c.json({ success: true, repos_updated: result.repos, cache_size: result.cache_size, generated_at: result.generated_at });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
 });
 
+// ---------------------------------------------------------------------------
+// Hunt Intelligence
+// ---------------------------------------------------------------------------
 
-// POST /intel/log
 app.post("/intel/log", async (c) => {
   const body = await c.req.json();
   try {
@@ -1346,7 +923,6 @@ app.post("/intel/log", async (c) => {
   }
 });
 
-// GET /intel/summary
 app.get("/intel/summary", async (c) => {
   try {
     const rows = await c.env.BRAIN_DB.prepare(`SELECT hunt_name, COUNT(*) as total_clues, SUM(CASE WHEN status = "complete" THEN 1 ELSE 0 END) as completed, SUM(CASE WHEN status = "stuck" THEN 1 ELSE 0 END) as stuck, AVG(duration_seconds) as avg_duration_sec, SUM(token_estimate) as total_tokens, model_used, COUNT(DISTINCT model_used) as model_count FROM hunt_intelligence WHERE created_at > datetime("now", "-7 days") GROUP BY hunt_name, model_used ORDER BY hunt_name`).all();
@@ -1356,11 +932,10 @@ app.get("/intel/summary", async (c) => {
   }
 });
 
-// GET /intel/clue
 app.get("/intel/clue", async (c) => {
   const hunt = c.req.query("hunt");
   const clue = c.req.query("clue");
-  if (!hunt || !clue) { return c.json({ error: "Missing hunt or clue parameter" }, 400); }
+  if (!hunt || !clue) return c.json({ error: "Missing hunt or clue parameter" }, 400);
   try {
     const row = await c.env.BRAIN_DB.prepare("SELECT * FROM hunt_intelligence WHERE hunt_name = ? AND clue_number = ? ORDER BY created_at DESC LIMIT 1").bind(hunt, parseInt(clue, 10)).first();
     return c.json(row || { error: "not found" });
@@ -1380,15 +955,10 @@ export default {
   },
   async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
     if (event.cron === '0 5 * * 1') {
-      // Weekly odometer reset (Mondays at 5am UTC)
       const now = new Date().toISOString();
-      await env.BRAIN_DB.prepare(
-        'UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?'
-      ).bind(now, now, 'singleton').run();
+      await env.BRAIN_DB.prepare('UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?').bind(now, now, 'singleton').run();
     }
-
     if (event.cron === '0 6 * * *') {
-      // Daily cognitive cache regeneration (6am UTC / midnight MT)
       if (env.GITHUB_TOKEN) {
         await generateAndPushCognitiveCache(env.BRAIN_DB, env.GITHUB_TOKEN);
       }
