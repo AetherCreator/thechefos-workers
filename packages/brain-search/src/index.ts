@@ -40,7 +40,8 @@ app.post('/api/brain/ingest', async (c) => {
   }
 
   try {
-    const text = stripFrontmatter(body.content).slice(0, 1000)
+    const content = stripFrontmatter(body.content)
+    const text = content.slice(0, 1000)
     const embedding = await c.env.AI.run(EMBEDDING_MODEL, { text: [text] }) as { data: number[][] }
 
     const vector: VectorizeVector = {
@@ -49,7 +50,10 @@ app.post('/api/brain/ingest', async (c) => {
       metadata: {
         path: body.path,
         domain: domainFromPath(body.path),
-        preview: stripFrontmatter(body.content).slice(0, 200),
+        node_type: detectNodeType(body.content),
+        status: 'active',
+        recency_tier: computeRecencyTier(body.path, body.content),
+        preview: content.slice(0, 200),
       },
     }
 
@@ -116,6 +120,9 @@ app.post('/api/brain/index', async (c) => {
       metadata: {
         path: file.path,
         domain: domainFromPath(file.path),
+        node_type: detectNodeType(file.content),
+        status: 'active',
+        recency_tier: computeRecencyTier(file.path, file.content),
         preview: stripFrontmatter(file.content).slice(0, 200),
       },
     }))
@@ -142,14 +149,24 @@ app.post('/api/brain/index', async (c) => {
 })
 
 app.post('/api/brain/search', async (c) => {
-  const body = await c.req.json<{ query: string; limit?: number }>()
+  const body = await c.req.json<{
+    query: string; limit?: number;
+    domain?: string; node_type?: string; status?: string; recency_tier?: string;
+  }>()
   const query = body.query?.trim()
   if (!query) {
     return c.json({ error: 'Missing required field: query' }, 400)
   }
   const limit = Math.min(body.limit ?? 5, 20)
 
-  return await performSearch(c.env, query, limit)
+  const filter: Record<string, string> = {}
+  if (body.domain) filter.domain = body.domain
+  if (body.node_type) filter.node_type = body.node_type
+  if (body.status) filter.status = body.status
+  if (body.recency_tier) filter.recency_tier = body.recency_tier
+
+  return await performSearch(c.env, query, limit,
+    Object.keys(filter).length > 0 ? filter : undefined)
 })
 
 // GET variant for quick testing
@@ -160,20 +177,29 @@ app.get('/api/brain/search', async (c) => {
   }
   const limit = Math.min(Number(c.req.query('limit')) || 5, 20)
 
-  return await performSearch(c.env, query, limit)
+  const filter: Record<string, string> = {}
+  if (c.req.query('domain')) filter.domain = c.req.query('domain')!
+  if (c.req.query('node_type')) filter.node_type = c.req.query('node_type')!
+  if (c.req.query('status')) filter.status = c.req.query('status')!
+  if (c.req.query('recency_tier')) filter.recency_tier = c.req.query('recency_tier')!
+
+  return await performSearch(c.env, query, limit,
+    Object.keys(filter).length > 0 ? filter : undefined)
 })
 
-async function performSearch(env: Env, query: string, limit: number): Promise<Response> {
+async function performSearch(
+  env: Env, query: string, limit: number,
+  filter?: Record<string, string>
+): Promise<Response> {
   try {
     // Embed the query
     const embedding = await env.AI.run(EMBEDDING_MODEL, { text: [query] }) as { data: number[][] }
     const queryVector = embedding.data[0]
 
     // Query Vectorize
-    const matches = await env.VECTORIZE.query(queryVector, {
-      topK: limit,
-      returnMetadata: 'all',
-    })
+    const queryOpts: VectorizeQueryOptions = { topK: limit, returnMetadata: 'all' }
+    if (filter) queryOpts.filter = filter
+    const matches = await env.VECTORIZE.query(queryVector, queryOpts)
 
     const headers = githubHeaders(env.GITHUB_TOKEN)
 
@@ -212,6 +238,31 @@ async function performSearch(env: Env, query: string, limit: number): Promise<Re
       headers: { 'Content-Type': 'application/json' },
     })
   }
+}
+
+// --- Metadata helpers ---
+
+function detectNodeType(content: string): string {
+  const lower = content.toLowerCase()
+  if (lower.includes('## decision') || lower.includes('decided') || lower.includes('chose')) return 'decision'
+  if (lower.includes('## insight') || lower.includes('## connections')) return 'insight'
+  if (lower.includes('## pattern') || lower.includes('cross-domain')) return 'pattern'
+  if (lower.includes('active-state') || lower.includes('## current')) return 'state'
+  if (lower.includes('## log') || lower.includes('session log')) return 'log'
+  return 'reference'
+}
+
+function computeRecencyTier(path: string, content: string): string {
+  const dateMatch = content.match(/Date:\s*(\d{4}-\d{2}-\d{2})/i)
+    || content.match(/(\d{4}-\d{2}-\d{2})/)
+  if (dateMatch) {
+    const daysAgo = (Date.now() - new Date(dateMatch[1]).getTime()) / 86_400_000
+    if (daysAgo <= 30) return 'current'
+    if (daysAgo <= 90) return 'recent'
+    return 'archive'
+  }
+  if (path.includes('00-session')) return 'current'
+  return 'recent'
 }
 
 // --- GitHub helpers ---
