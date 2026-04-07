@@ -129,9 +129,9 @@ app.post('/migrate/brain', async (c) => {
 // GET /query — structured brain queries
 app.get('/query', async (c) => {
   const params = {
-    domain: c.req.query('domain'),
-    type: c.req.query('type'),
-    tag: c.req.query('tag'),
+    domain: c.req.query('domain') || c.req.query('filter.domain'),
+    type: c.req.query('type') || c.req.query('filter.type'),
+    tag: c.req.query('tag') || c.req.query('filter.tag'),
     sort: c.req.query('sort') as 'updated_at' | 'created_at' | 'connection_count' | undefined,
     order: c.req.query('order') as 'asc' | 'desc' | undefined,
     limit: c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : undefined,
