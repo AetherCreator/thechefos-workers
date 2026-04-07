@@ -10,7 +10,7 @@ const BATCH_SIZE = 20 // Vectorize upsert limit
 export interface Env {
   AI: Ai
   VECTORIZE: VectorizeIndex
-  GITHUB_TOKEN: string
+  GITHUB_TOKEN?: string
 }
 
 interface BrainFile {
@@ -86,7 +86,14 @@ app.post('/api/brain/index', async (c) => {
       `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/git/trees/main?recursive=1`,
       { headers }
     )
-    const tree = await treeResp.json() as { tree: { path: string; type: string }[] }
+    const treeBody = await treeResp.text()
+    if (!treeResp.ok) {
+      return c.json({ error: 'GitHub tree fetch failed', status: treeResp.status, details: treeBody }, 500)
+    }
+    const tree = JSON.parse(treeBody) as { tree?: { path: string; type: string }[] }
+    if (!tree.tree) {
+      return c.json({ error: 'GitHub tree missing', status: treeResp.status, details: treeBody.slice(0, 500) }, 500)
+    }
     const allPaths = tree.tree
       .filter((f) => f.path.startsWith('brain/') && f.path.endsWith('.md') && f.type === 'blob')
       .map((f) => f.path)
@@ -267,13 +274,14 @@ function computeRecencyTier(path: string, content: string): string {
 
 // --- GitHub helpers ---
 
-function githubHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
+function githubHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'SuperClaude-Brain-Search',
     'X-GitHub-Api-Version': '2022-11-28',
   }
+  if (token) headers.Authorization = `Bearer ${token}`
+  return headers
 }
 
 async function fetchBrainFiles(headers: Record<string, string>): Promise<BrainFile[]> {
@@ -328,11 +336,19 @@ async function fetchFileContent(
 // --- Utilities ---
 
 function pathToVectorId(path: string): string {
-  // Replace / with -- for URL-safe vector IDs
-  return path.replace(/\//g, '--')
+  // Hash path to stay within Vectorize 64-byte ID limit.
+  // Path is always stored in metadata.path — ID reversibility not needed.
+  let h1 = 5381, h2 = 52711
+  for (let i = 0; i < path.length; i++) {
+    const c = path.charCodeAt(i)
+    h1 = (((h1 << 5) + h1) ^ c) >>> 0
+    h2 = (((h2 << 5) + h2) ^ c) >>> 0
+  }
+  return (h1.toString(36) + h2.toString(36)).padStart(14, '0')
 }
 
 function vectorIdToPath(id: string): string {
+  // Only used as fallback when metadata.path is absent (legacy IDs)
   return id.replace(/--/g, '/')
 }
 
