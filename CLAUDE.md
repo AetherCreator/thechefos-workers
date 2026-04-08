@@ -1,15 +1,15 @@
-# TheChefOS Workers — Claude Code Context
+# TheChefOS Workers â Claude Code Context
 Last updated: 2026-03-28
 
 ## What This Is
 Cloudflare Workers monorepo powering the backend for ALL Tyler's products.
 Domain: api.thechefos.app (via Cloudflare custom domain on the router Worker)
-Owner: Tyler Vegetabile — iPhone-only workflow, Claude Max.
+Owner: Tyler Vegetabile â iPhone-only workflow, Claude Max.
 
 ## Deployed Workers (7 live as of 2026-03-28)
 | Worker | Package | Purpose |
 |--------|---------|---------|
-| thechefos-router | packages/router | Hono router — CORS, service binding dispatch |
+| thechefos-router | packages/router | Hono router â CORS, service binding dispatch |
 | thechefos-ai-gateway | packages/ai-gateway | Anthropic proxy via CF AI Gateway |
 | thechefos-brain-search | packages/brain-search | Vectorize semantic search (Workers AI embeddings) |
 | thechefos-brain-write | packages/brain-write | GitHub brain/ push + GRAPH-INDEX auto-update |
@@ -30,12 +30,12 @@ Owner: Tyler Vegetabile — iPhone-only workflow, Claude Max.
 
 ## Router Dispatch Map
 ```
-/oauth/*        → OAUTH_SERVER (service binding)
-/api/brain/*    → BRAIN_WRITE (service binding)
-/api/mcp*       → MCP_SERVER (service binding)
-/api/telegram*  → TELEGRAM_BOT (service binding)
-/api/claude     → AI_GATEWAY (service binding)
-/ai/*           → AI_GATEWAY (service binding)
+/oauth/*        â OAUTH_SERVER (service binding)
+/api/brain/*    â BRAIN_WRITE (service binding)
+/api/mcp*       â MCP_SERVER (service binding)
+/api/telegram*  â TELEGRAM_BOT (service binding)
+/api/claude     â AI_GATEWAY (service binding)
+/ai/*           â AI_GATEWAY (service binding)
 ```
 
 CORS origins: chefos-six.vercel.app, superconci.vercel.app, morewords.vercel.app, thechefos.app, api.thechefos.app, claude.ai
@@ -49,9 +49,9 @@ CORS origins: chefos-six.vercel.app, superconci.vercel.app, morewords.vercel.app
 ## Architecture Rules
 1. All Workers use Hono framework
 2. Router passes c.req.raw to service bindings (full URL, not stripped)
-3. Downstream Workers receive full paths — use forward() helper to strip prefix
+3. Downstream Workers receive full paths â use forward() helper to strip prefix
 4. Workers service bindings require bound Worker to be deployed FIRST
-5. Kid-safety: x-product header (superconci/morewords) → cf-aig-collect-log-payload: false
+5. Kid-safety: x-product header (superconci/morewords) â cf-aig-collect-log-payload: false
 6. GitHub Actions CF_API_TOKEN must include Workers KV Storage Edit scope
 
 ## Code Rules
@@ -63,9 +63,9 @@ CORS origins: chefos-six.vercel.app, superconci.vercel.app, morewords.vercel.app
 ## Infrastructure Verification Rule
 State files are claims, not truth. Tools are truth.
 Before ANY infrastructure planning, run:
-1. Cloudflare:workers_list — deployed Workers
-2. Cloudflare:d1_databases_list — D1 databases
-3. Cloudflare:kv_namespaces_list — KV stores
+1. Cloudflare:workers_list â deployed Workers
+2. Cloudflare:d1_databases_list â D1 databases
+3. Cloudflare:kv_namespaces_list â KV stores
 If tools and state files disagree, tools win.
 
 ## Post-Session State Sync
@@ -75,7 +75,34 @@ After deploying or modifying ANY Worker:
 - This is MANDATORY. The last deployment session skipped this and caused a 6-clue hunt to be designed for infrastructure that already existed.
 
 ## Related Repos
-- SuperClaude (github.com/AetherCreator/SuperClaude) — skills, brain/, state files
-- ChefOS (github.com/AetherCreator/chefos) — React PWA frontend
-- SuperConci (github.com/AetherCreator/SuperConci) — Kids learning PWA
-- More (github.com/AetherCreator/more) — MoreWords vocab app
+- SuperClaude (github.com/AetherCreator/SuperClaude) â skills, brain/, state files
+- ChefOS (github.com/AetherCreator/chefos) â React PWA frontend
+- SuperConci (github.com/AetherCreator/SuperConci) â Kids learning PWA
+- More (github.com/AetherCreator/more) â MoreWords vocab app
+
+<!-- COGNITIVE-CACHE-START -->
+## 🧠 Tyler's Cognitive Context (auto-generated 2026-04-08)
+<!-- This section is auto-generated daily from brain/ graph. Do not edit manually. -->
+
+### Mental Models (top by connection density)
+- **Hello**: Brain node: Hello (session/note) [session]
+- **ACTIVE STATE**: Brain node: ACTIVE STATE (session/state) [session]
+- **CAPABILITY INDEX**: Brain node: CAPABILITY INDEX (session/note) [session]
+- **Harvest Full Session**: Brain node: Harvest Full Session (daily/daily) [daily]
+- **Harvest Superclaude Setup**: Brain node: Harvest Superclaude Setup (daily/daily) [daily]
+
+### Active Patterns
+- progressive-disclosure-core-architecture: spans projects, meta, knowledge, professional [graduated]
+- ratio-math-universal: spans professional, knowledge, projects, meta [graduated]
+
+### Brain Health
+- Nodes: 154 | Hot (7d): 0 | Patterns: 2
+- Strongest: meta (43) | Weakest: session (3)
+
+### How Tyler Thinks
+- Native mental model: ratio-based scaling (baker's % = portfolio allocation = game stat curves)
+- Decision protocol: feel-first, instruments verify
+- Learning sequence: rhythm before tempo
+- Information architecture: progressive disclosure (router + on-demand detail)
+- Teaching method: let them fail once, then explain why
+<!-- COGNITIVE-CACHE-END -->
