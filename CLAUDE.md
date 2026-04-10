@@ -1,15 +1,15 @@
-# TheChefOS Workers Ã¢ÂÂ Claude Code Context
+# TheChefOS Workers ÃÂ¢ÃÂÃÂ Claude Code Context
 Last updated: 2026-03-28
 
 ## What This Is
 Cloudflare Workers monorepo powering the backend for ALL Tyler's products.
 Domain: api.thechefos.app (via Cloudflare custom domain on the router Worker)
-Owner: Tyler Vegetabile Ã¢ÂÂ iPhone-only workflow, Claude Max.
+Owner: Tyler Vegetabile ÃÂ¢ÃÂÃÂ iPhone-only workflow, Claude Max.
 
 ## Deployed Workers (7 live as of 2026-03-28)
 | Worker | Package | Purpose |
 |--------|---------|---------|
-| thechefos-router | packages/router | Hono router Ã¢ÂÂ CORS, service binding dispatch |
+| thechefos-router | packages/router | Hono router ÃÂ¢ÃÂÃÂ CORS, service binding dispatch |
 | thechefos-ai-gateway | packages/ai-gateway | Anthropic proxy via CF AI Gateway |
 | thechefos-brain-search | packages/brain-search | Vectorize semantic search (Workers AI embeddings) |
 | thechefos-brain-write | packages/brain-write | GitHub brain/ push + GRAPH-INDEX auto-update |
@@ -30,12 +30,12 @@ Owner: Tyler Vegetabile Ã¢ÂÂ iPhone-only workflow, Claude Max.
 
 ## Router Dispatch Map
 ```
-/oauth/*        Ã¢ÂÂ OAUTH_SERVER (service binding)
-/api/brain/*    Ã¢ÂÂ BRAIN_WRITE (service binding)
-/api/mcp*       Ã¢ÂÂ MCP_SERVER (service binding)
-/api/telegram*  Ã¢ÂÂ TELEGRAM_BOT (service binding)
-/api/claude     Ã¢ÂÂ AI_GATEWAY (service binding)
-/ai/*           Ã¢ÂÂ AI_GATEWAY (service binding)
+/oauth/*        ÃÂ¢ÃÂÃÂ OAUTH_SERVER (service binding)
+/api/brain/*    ÃÂ¢ÃÂÃÂ BRAIN_WRITE (service binding)
+/api/mcp*       ÃÂ¢ÃÂÃÂ MCP_SERVER (service binding)
+/api/telegram*  ÃÂ¢ÃÂÃÂ TELEGRAM_BOT (service binding)
+/api/claude     ÃÂ¢ÃÂÃÂ AI_GATEWAY (service binding)
+/ai/*           ÃÂ¢ÃÂÃÂ AI_GATEWAY (service binding)
 ```
 
 CORS origins: chefos-six.vercel.app, superconci.vercel.app, morewords.vercel.app, thechefos.app, api.thechefos.app, claude.ai
@@ -49,9 +49,9 @@ CORS origins: chefos-six.vercel.app, superconci.vercel.app, morewords.vercel.app
 ## Architecture Rules
 1. All Workers use Hono framework
 2. Router passes c.req.raw to service bindings (full URL, not stripped)
-3. Downstream Workers receive full paths Ã¢ÂÂ use forward() helper to strip prefix
+3. Downstream Workers receive full paths ÃÂ¢ÃÂÃÂ use forward() helper to strip prefix
 4. Workers service bindings require bound Worker to be deployed FIRST
-5. Kid-safety: x-product header (superconci/morewords) Ã¢ÂÂ cf-aig-collect-log-payload: false
+5. Kid-safety: x-product header (superconci/morewords) ÃÂ¢ÃÂÃÂ cf-aig-collect-log-payload: false
 6. GitHub Actions CF_API_TOKEN must include Workers KV Storage Edit scope
 
 ## Code Rules
@@ -63,9 +63,9 @@ CORS origins: chefos-six.vercel.app, superconci.vercel.app, morewords.vercel.app
 ## Infrastructure Verification Rule
 State files are claims, not truth. Tools are truth.
 Before ANY infrastructure planning, run:
-1. Cloudflare:workers_list Ã¢ÂÂ deployed Workers
-2. Cloudflare:d1_databases_list Ã¢ÂÂ D1 databases
-3. Cloudflare:kv_namespaces_list Ã¢ÂÂ KV stores
+1. Cloudflare:workers_list ÃÂ¢ÃÂÃÂ deployed Workers
+2. Cloudflare:d1_databases_list ÃÂ¢ÃÂÃÂ D1 databases
+3. Cloudflare:kv_namespaces_list ÃÂ¢ÃÂÃÂ KV stores
 If tools and state files disagree, tools win.
 
 ## Post-Session State Sync
@@ -75,13 +75,13 @@ After deploying or modifying ANY Worker:
 - This is MANDATORY. The last deployment session skipped this and caused a 6-clue hunt to be designed for infrastructure that already existed.
 
 ## Related Repos
-- SuperClaude (github.com/AetherCreator/SuperClaude) Ã¢ÂÂ skills, brain/, state files
-- ChefOS (github.com/AetherCreator/chefos) Ã¢ÂÂ React PWA frontend
-- SuperConci (github.com/AetherCreator/SuperConci) Ã¢ÂÂ Kids learning PWA
-- More (github.com/AetherCreator/more) Ã¢ÂÂ MoreWords vocab app
+- SuperClaude (github.com/AetherCreator/SuperClaude) ÃÂ¢ÃÂÃÂ skills, brain/, state files
+- ChefOS (github.com/AetherCreator/chefos) ÃÂ¢ÃÂÃÂ React PWA frontend
+- SuperConci (github.com/AetherCreator/SuperConci) ÃÂ¢ÃÂÃÂ Kids learning PWA
+- More (github.com/AetherCreator/more) ÃÂ¢ÃÂÃÂ MoreWords vocab app
 
 <!-- COGNITIVE-CACHE-START -->
-## 🧠 Tyler's Cognitive Context (auto-generated 2026-04-09)
+## 🧠 Tyler's Cognitive Context (auto-generated 2026-04-10)
 <!-- This section is auto-generated daily from brain/ graph. Do not edit manually. -->
 
 ### Mental Models (top by connection density)
