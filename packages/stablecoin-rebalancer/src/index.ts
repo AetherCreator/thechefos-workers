@@ -1,12 +1,17 @@
 import { Hono } from "hono";
 import type { Env } from "./lib/assert-read-only";
 import { runRateSnapshot } from "./scanners/snapshot";
+import { evaluateOpportunities } from "./scanners/arbitrage";
 
 const app = new Hono<{ Bindings: Env }>();
-app.get("/api/health", (c) => c.json({ ok: true, clue: 3, ts: Date.now() }));
+app.get("/api/health", (c) => c.json({ ok: true, clue: 4, ts: Date.now() }));
 app.get("/api/force-snapshot", async (c) => {
   const { batchId, rowsWritten } = await runRateSnapshot(c.env);
   return c.json({ ok: true, batch_id: batchId, rows_written: rowsWritten });
+});
+app.get("/api/force-arbitrage", async (c) => {
+  await evaluateOpportunities(c.env);
+  return c.json({ ok: true });
 });
 
 export default {
