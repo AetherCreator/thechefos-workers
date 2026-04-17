@@ -1,0 +1,29 @@
+name = "stablecoin-rebalancer"
+main = "src/index.ts"
+compatibility_date = "2026-04-16"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "stablecoin-rebalancer"
+database_id = "93de2836-f9db-4bc7-a9ed-303afc030615"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "2e7e7a1ce7c14fe491736e46c08b4506"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+READ_ONLY = "true"
+ETH_RPC_URL = "https://cloudflare-eth.com"
+ARBITRUM_RPC_URL = "https://arb1.arbitrum.io/rpc"
+BASE_RPC_URL = "https://mainnet.base.org"
+POLYGON_RPC_URL = "https://polygon-rpc.com"
+TELEGRAM_CHAT_ID = "6091970994"
+GAS_ESTIMATE_USD_ETH = "15"
+GAS_ESTIMATE_USD_L2 = "0.50"
+MIN_NET_EDGE_BPS = "100"
+COOLDOWN_HOURS = "6"
+CAPITAL_ASSUMPTION = "10000"
