@@ -17,10 +17,10 @@ crons = ["0 * * * *"]
 
 [vars]
 READ_ONLY = "true"
-ETH_RPC_URL = "https://cloudflare-eth.com"
+ETH_RPC_URL = "https://ethereum.publicnode.com"
 ARBITRUM_RPC_URL = "https://arb1.arbitrum.io/rpc"
-BASE_RPC_URL = "https://mainnet.base.org"
-POLYGON_RPC_URL = "https://polygon-rpc.com"
+BASE_RPC_URL = "https://base.publicnode.com"
+POLYGON_RPC_URL = "https://rpc-mainnet.matic.quiknode.pro"
 TELEGRAM_CHAT_ID = "6091970994"
 GAS_ESTIMATE_USD_ETH = "15"
 GAS_ESTIMATE_USD_L2 = "0.50"
