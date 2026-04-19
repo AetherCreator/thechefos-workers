@@ -75,6 +75,18 @@ app.post('/api/webhook/github', async (c) => {
     return c.json({ ok: true, action: 'ignored — not a push event' })
   }
 
+  // OPS-021 FIX: Ignore self-commits from brain-ops to prevent amplification loop.
+  // Every brain-write push (node + GRAPH-INDEX) fires the webhook again — this breaks the cycle.
+  const headCommitterEmail = payload.head_commit?.committer?.email || ''
+  if (headCommitterEmail === COMMITTER.email) {
+    return c.json({ ok: true, action: 'ignored — brain-ops self-commit' })
+  }
+
+  // OPS-021 FIX: Only process main branch — ignore feature branches, PRs, etc.
+  if (payload.ref && payload.ref !== 'refs/heads/main') {
+    return c.json({ ok: true, action: 'ignored — non-main branch' })
+  }
+
   // Scan all commits for COMPLETE.md files
   let foundComplete = false
   for (const commit of payload.commits) {
