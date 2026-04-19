@@ -6,7 +6,10 @@ compatibility_date = "2026-03-01"
 # Set via: Cloudflare Dashboard → superclaude-brain-graph → Settings → Variables and Secrets → Add Secret
 
 [triggers]
-crons = ["0 5 * * 1", "0 6 * * *"]
+# 0 5 * * 1 = 5am UTC Mondays — weekly odometer reset
+# 0 6 * * 0 = 6am UTC Sundays — cognitive-cache generate + push (weekly, was daily)
+# Changed from daily (0 6 * * *) to weekly to reduce Worker invocations + GitHub push churn
+crons = ["0 5 * * 1", "0 6 * * 0"]
 
 [[d1_databases]]
 binding = "BRAIN_DB"
