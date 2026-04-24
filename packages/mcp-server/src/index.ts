@@ -14,6 +14,8 @@ export interface Env {
   GITHUB_BRANCH: string;
   MCP_OBJECT: DurableObjectNamespace;
   PROXY_URL: string;  // https://thechefos-proxy.tveg-baking.workers.dev
+  SHELL_BRIDGE_URL: string; // https://n8n.thechefos.app/webhook/shell
+  SHELL_BRIDGE_KEY: string; // x-shell-key value
 }
 
 // ---------- GitHub helpers ----------
@@ -50,12 +52,51 @@ async function githubListDir(env: Env, path: string): Promise<GitHubDirEntry[]> 
   return res.json();
 }
 
+// ---------- Shell Bridge helper ----------
+
+async function shellExec(env: Env, command: string, timeoutMs = 30000): Promise<{ returncode: number; stdout: string; stderr: string }> {
+  const bridgeUrl = env.SHELL_BRIDGE_URL || "https://n8n.thechefos.app/webhook/shell";
+  const bridgeKey = env.SHELL_BRIDGE_KEY || "SuperDuperClaude";
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(bridgeUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-shell-key": bridgeKey,
+      },
+      body: JSON.stringify({ command }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      return { returncode: 1, stdout: "", stderr: `Shell Bridge HTTP ${res.status}` };
+    }
+
+    const data = await res.json() as { returncode?: number; stdout?: string; stderr?: string };
+    return {
+      returncode: data.returncode ?? 0,
+      stdout: data.stdout ?? "",
+      stderr: data.stderr ?? "",
+    };
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const msg = err instanceof Error ? err.message : String(err);
+    return { returncode: 1, stdout: "", stderr: `Shell Bridge error: ${msg}` };
+  }
+}
+
 // ---------- MCP Agent ----------
 
 export class TheChefOSMCP extends McpAgent<Env> {
   server = new McpServer({
     name: "thechefos-mcp-server",
-    version: "0.3.0",
+    version: "0.4.0",
   });
 
   async init() {
@@ -139,6 +180,37 @@ export class TheChefOSMCP extends McpAgent<Env> {
           return { content: [{ type: "text" as const, text: "No relevant brain context found for this query." }] };
         }
         return { content: [{ type: "text" as const, text: formatBrainContext(results) }] };
+      }
+    );
+
+    // ── Shell Bridge Tool ─────────────────────────────────────────────────
+    // Proxies commands to the VPS via n8n Shell Bridge.
+    // Bypasses Claude's bash_tool sandbox — Worker calls n8n directly from
+    // Cloudflare's network. Always prefix git/cat/grep/etc with `rtk`.
+
+    this.server.tool(
+      "shell_execute",
+      "Execute a shell command on the VPS via Shell Bridge. Always prefix commands with `rtk` for git/cat/grep/test/build/cargo/docker/kubectl/aws/wrangler/vercel ops. Skip rtk only for echo, mkdir, and custom scripts.",
+      {
+        command: z
+          .string()
+          .describe('Shell command to run on VPS (e.g. "rtk git status", "rtk cat /opt/docker/n8n/.env | grep ENCRYPTION")'),
+        timeout_ms: z
+          .number()
+          .default(30000)
+          .describe("Timeout in milliseconds (default 30s, max 120s for long builds)"),
+      },
+      async ({ command, timeout_ms }) => {
+        const clamped = Math.min(timeout_ms ?? 30000, 120000);
+        const result = await shellExec(this.env, command, clamped);
+
+        const lines = [
+          `exit: ${result.returncode}`,
+          result.stdout ? `stdout:\n${result.stdout}` : "",
+          result.stderr ? `stderr:\n${result.stderr}` : "",
+        ].filter(Boolean).join("\n\n");
+
+        return { content: [{ type: "text" as const, text: lines }] };
       }
     );
 
@@ -610,7 +682,7 @@ export default {
     // Health check — always public
     if (url.pathname === "/health") {
       return new Response(
-        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server" }),
+        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server", version: "0.4.0" }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
