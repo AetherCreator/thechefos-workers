@@ -78,9 +78,19 @@ async function shellExec(env: Env, command: string, timeoutMs = 30000): Promise<
       return { returncode: 1, stdout: "", stderr: `Shell Bridge HTTP ${res.status}` };
     }
 
-    const data = await res.json() as { returncode?: number; stdout?: string; stderr?: string };
+    // n8n returns either a plain object or an array — normalise both
+    // Desktop n8n: [{"stdout":"...","stderr":"...","exit":0}]
+    // VPS n8n:     {"returncode":0,"stdout":"...","stderr":"..."}
+    const raw = await res.json() as unknown;
+    const data = (Array.isArray(raw) ? raw[0] : raw) as {
+      returncode?: number;
+      exit?: number;
+      stdout?: string;
+      stderr?: string;
+    };
+
     return {
-      returncode: data.returncode ?? 0,
+      returncode: data.returncode ?? data.exit ?? 0,
       stdout: data.stdout ?? "",
       stderr: data.stderr ?? "",
     };
@@ -96,7 +106,7 @@ async function shellExec(env: Env, command: string, timeoutMs = 30000): Promise<
 export class TheChefOSMCP extends McpAgent<Env> {
   server = new McpServer({
     name: "thechefos-mcp-server",
-    version: "0.4.0",
+    version: "0.4.1",
   });
 
   async init() {
@@ -184,17 +194,17 @@ export class TheChefOSMCP extends McpAgent<Env> {
     );
 
     // ── Shell Bridge Tool ─────────────────────────────────────────────────
-    // Proxies commands to the VPS via n8n Shell Bridge.
+    // Proxies commands to the desktop WSL via n8n Shell Bridge.
     // Bypasses Claude's bash_tool sandbox — Worker calls n8n directly from
     // Cloudflare's network. Always prefix git/cat/grep/etc with `rtk`.
 
     this.server.tool(
       "shell_execute",
-      "Execute a shell command on the VPS via Shell Bridge. Always prefix commands with `rtk` for git/cat/grep/test/build/cargo/docker/kubectl/aws/wrangler/vercel ops. Skip rtk only for echo, mkdir, and custom scripts.",
+      "Execute a shell command on the desktop WSL via Shell Bridge. Always prefix commands with `rtk` for git/cat/grep/test/build/cargo/docker/kubectl/aws/wrangler/vercel ops. Skip rtk only for echo, mkdir, and custom scripts.",
       {
         command: z
           .string()
-          .describe('Shell command to run on VPS (e.g. "rtk git status", "rtk cat /opt/docker/n8n/.env | grep ENCRYPTION")'),
+          .describe('Shell command to run (e.g. "rtk git status", "whoami && hostname")'),
         timeout_ms: z
           .number()
           .default(30000)
@@ -411,10 +421,10 @@ export class TheChefOSMCP extends McpAgent<Env> {
 
     this.server.tool(
       "cf_secret_set",
-      "Set or rotate a secret on any deployed Cloudflare Worker. Use this for token rotation — e.g. rotating GITHUB_TOKEN across all Workers after a new token is generated.",
+      "Set or rotate a secret on any deployed Cloudflare Worker.",
       {
-        script_name: z.string().describe("Worker script name (e.g. 'thechefos-mcp-server', 'thechefos-proxy', 'superclaude-brain-graph')"),
-        secret_name: z.string().describe("Secret variable name (e.g. 'GITHUB_TOKEN', 'MCP_AUTH_TOKEN')"),
+        script_name: z.string().describe("Worker script name"),
+        secret_name: z.string().describe("Secret variable name"),
         secret_value: z.string().describe("The new secret value"),
       },
       async ({ script_name, secret_name, secret_value }) =>
@@ -469,14 +479,14 @@ export class TheChefOSMCP extends McpAgent<Env> {
 
     this.server.tool(
       "vercel_env_upsert",
-      "Create or update an environment variable on a Vercel project. Automatically detects if the key exists and patches or creates accordingly. Use for Stripe key flips, feature flags, any config change that needs a redeploy.",
+      "Create or update an environment variable on a Vercel project.",
       {
-        project_id: z.string().describe("Vercel project ID (e.g. 'prj_xxxx') or project name slug"),
-        key: z.string().describe("Environment variable name (e.g. 'VITE_STRIPE_PUBLISHABLE_KEY')"),
-        value: z.string().describe("New value for the environment variable"),
-        target: z.array(z.enum(["production", "preview", "development"])).default(["production", "preview", "development"]).describe("Deployment targets"),
-        type: z.enum(["plain", "secret", "encrypted"]).default("plain").describe("Variable type — use 'encrypted' for secrets like API keys"),
-        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+        project_id: z.string().describe("Vercel project ID or slug"),
+        key: z.string().describe("Environment variable name"),
+        value: z.string().describe("New value"),
+        target: z.array(z.enum(["production", "preview", "development"])).default(["production", "preview", "development"]),
+        type: z.enum(["plain", "secret", "encrypted"]).default("plain"),
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ"),
       },
       async ({ project_id, key, value, target, type, team_id }) =>
         callFor("vercel_env_upsert")("vercel", "env_upsert", { project_id, key, value, target, type, team_id })
@@ -484,10 +494,10 @@ export class TheChefOSMCP extends McpAgent<Env> {
 
     this.server.tool(
       "vercel_redeploy",
-      "Trigger a production redeploy of a Vercel project from its latest deployment. Call this after vercel_env_upsert to apply new environment variables.",
+      "Trigger a production redeploy of a Vercel project from its latest deployment.",
       {
         project_id: z.string().describe("Vercel project ID or slug"),
-        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ").describe("Vercel team ID"),
+        team_id: z.string().default("team_N1DyKcTkZcNw6KwBzbffimTZ"),
       },
       async ({ project_id, team_id }) =>
         callFor("vercel_redeploy")("vercel", "redeploy", { project_id, team_id })
@@ -506,10 +516,10 @@ export class TheChefOSMCP extends McpAgent<Env> {
       "calendar_events",
       "List upcoming calendar events",
       {
-        calendar_id: z.string().default("primary").describe("Calendar ID"),
-        time_min: z.string().optional().describe("Start time (ISO 8601) — defaults to now"),
-        time_max: z.string().optional().describe("End time (ISO 8601) — defaults to 7 days from now"),
-        query: z.string().optional().describe("Search query to filter events"),
+        calendar_id: z.string().default("primary"),
+        time_min: z.string().optional(),
+        time_max: z.string().optional(),
+        query: z.string().optional(),
       },
       async ({ calendar_id, time_min, time_max, query }) =>
         callFor("calendar_events")("calendar", "list_events", { calendar_id, time_min, time_max, query })
@@ -519,23 +529,17 @@ export class TheChefOSMCP extends McpAgent<Env> {
       "calendar_create_event",
       "Create a new calendar event",
       {
-        calendar_id: z.string().default("primary").describe("Calendar ID"),
-        summary: z.string().describe("Event title"),
-        start: z.string().describe("Start time (ISO 8601)"),
-        end: z.string().describe("End time (ISO 8601)"),
-        description: z.string().optional().describe("Event description"),
-        location: z.string().optional().describe("Event location"),
+        calendar_id: z.string().default("primary"),
+        summary: z.string(),
+        start: z.string(),
+        end: z.string(),
+        description: z.string().optional(),
+        location: z.string().optional(),
       },
       async ({ calendar_id, summary, start, end, description, location }) =>
         callFor("calendar_create_event")("calendar", "create_event", {
           calendar_id,
-          event: {
-            summary,
-            start: { dateTime: start },
-            end: { dateTime: end },
-            description,
-            location,
-          },
+          event: { summary, start: { dateTime: start }, end: { dateTime: end }, description, location },
         })
     );
 
@@ -543,9 +547,9 @@ export class TheChefOSMCP extends McpAgent<Env> {
       "calendar_free_time",
       "Find free/busy time slots",
       {
-        calendar_id: z.string().default("primary").describe("Calendar ID"),
-        time_min: z.string().describe("Start of range (ISO 8601)"),
-        time_max: z.string().describe("End of range (ISO 8601)"),
+        calendar_id: z.string().default("primary"),
+        time_min: z.string(),
+        time_max: z.string(),
       },
       async ({ calendar_id, time_min, time_max }) =>
         callFor("calendar_free_time")("calendar", "find_free_time", { calendar_id, time_min, time_max })
@@ -557,8 +561,8 @@ export class TheChefOSMCP extends McpAgent<Env> {
       "gmail_search",
       "Search Gmail messages",
       {
-        q: z.string().describe('Gmail search query (e.g. "from:boss subject:review")'),
-        max_results: z.number().default(10).describe("Number of results"),
+        q: z.string(),
+        max_results: z.number().default(10),
       },
       async ({ q, max_results }) =>
         callFor("gmail_search")("gmail", "search_messages", { q, max_results })
@@ -567,9 +571,7 @@ export class TheChefOSMCP extends McpAgent<Env> {
     this.server.tool(
       "gmail_read_message",
       "Read a specific Gmail message by ID",
-      {
-        message_id: z.string().describe("Gmail message ID"),
-      },
+      { message_id: z.string() },
       async ({ message_id }) =>
         callFor("gmail_read_message")("gmail", "get_message", { message_id })
     );
@@ -577,117 +579,45 @@ export class TheChefOSMCP extends McpAgent<Env> {
     this.server.tool(
       "gmail_read_thread",
       "Read a full Gmail thread by ID",
-      {
-        thread_id: z.string().describe("Gmail thread ID"),
-      },
+      { thread_id: z.string() },
       async ({ thread_id }) =>
         callFor("gmail_read_thread")("gmail", "get_thread", { thread_id })
     );
 
     this.server.tool(
       "gmail_profile",
-      "Get Gmail profile info (email address, messages total)",
+      "Get Gmail profile info",
       {},
       async () => callFor("gmail_profile")("gmail", "get_profile", {})
     );
 
     // ── Val Town Tools ───────────────────────────────────────────────────────
 
-    this.server.tool(
-      "valtown_me",
-      "Get Val Town profile info",
-      {},
-      async () => callFor("valtown_me")("valtown", "me", {})
-    );
-
-    this.server.tool(
-      "valtown_list_vals",
-      "List all Val Town vals",
-      {
-        limit: z.number().default(20).describe("Number of vals to return"),
-        offset: z.number().default(0).describe("Pagination offset"),
-      },
-      async ({ limit, offset }) =>
-        callFor("valtown_list_vals")("valtown", "list_vals", { limit, offset })
-    );
-
-    this.server.tool(
-      "valtown_create_val",
-      "Create a new Val Town val (serverless function)",
-      {
-        name: z.string().describe("Val name (e.g. 'brainHealthPulse')"),
-        code: z.string().describe("Full TypeScript code for the val"),
-        type: z.enum(["http", "cron", "email"]).default("http").describe("Trigger type"),
-        privacy: z.enum(["public", "private", "unlisted"]).default("private").describe("Privacy setting"),
-        readme: z.string().optional().describe("Optional README/description"),
-      },
-      async ({ name, code, type, privacy, readme }) =>
-        callFor("valtown_create_val")("valtown", "create_val", { name, code, type, privacy, readme })
-    );
-
-    this.server.tool(
-      "valtown_get_val",
-      "Get details of a specific val",
-      {
-        val_id: z.string().describe("Val UUID"),
-      },
-      async ({ val_id }) =>
-        callFor("valtown_get_val")("valtown", "get_val", { val_id })
-    );
-
-    this.server.tool(
-      "valtown_update_val",
-      "Update a val's code (creates new version)",
-      {
-        val_id: z.string().describe("Val UUID"),
-        code: z.string().describe("Updated TypeScript code"),
-        type: z.enum(["http", "cron", "email"]).optional().describe("Change trigger type"),
-      },
-      async ({ val_id, code, type }) =>
-        callFor("valtown_update_val")("valtown", "update_val", { val_id, code, type })
-    );
-
-    this.server.tool(
-      "valtown_delete_val",
-      "Delete a val",
-      {
-        val_id: z.string().describe("Val UUID"),
-      },
-      async ({ val_id }) =>
-        callFor("valtown_delete_val")("valtown", "delete_val", { val_id })
-    );
-
-    this.server.tool(
-      "valtown_sqlite",
-      "Execute SQL against Val Town's built-in SQLite database",
-      {
-        sql: z.string().describe("SQL statement to execute"),
-        args: z.array(z.unknown()).default([]).describe("Query parameters"),
-      },
-      async ({ sql, args }) =>
-        callFor("valtown_sqlite")("valtown", "sqlite_execute", { sql, args })
-    );
+    this.server.tool("valtown_me", "Get Val Town profile info", {}, async () => callFor("valtown_me")("valtown", "me", {}));
+    this.server.tool("valtown_list_vals", "List all Val Town vals", { limit: z.number().default(20), offset: z.number().default(0) }, async ({ limit, offset }) => callFor("valtown_list_vals")("valtown", "list_vals", { limit, offset }));
+    this.server.tool("valtown_create_val", "Create a new Val Town val", { name: z.string(), code: z.string(), type: z.enum(["http", "cron", "email"]).default("http"), privacy: z.enum(["public", "private", "unlisted"]).default("private"), readme: z.string().optional() }, async ({ name, code, type, privacy, readme }) => callFor("valtown_create_val")("valtown", "create_val", { name, code, type, privacy, readme }));
+    this.server.tool("valtown_get_val", "Get details of a specific val", { val_id: z.string() }, async ({ val_id }) => callFor("valtown_get_val")("valtown", "get_val", { val_id }));
+    this.server.tool("valtown_update_val", "Update a val's code", { val_id: z.string(), code: z.string(), type: z.enum(["http", "cron", "email"]).optional() }, async ({ val_id, code, type }) => callFor("valtown_update_val")("valtown", "update_val", { val_id, code, type }));
+    this.server.tool("valtown_delete_val", "Delete a val", { val_id: z.string() }, async ({ val_id }) => callFor("valtown_delete_val")("valtown", "delete_val", { val_id }));
+    this.server.tool("valtown_sqlite", "Execute SQL against Val Town SQLite", { sql: z.string(), args: z.array(z.unknown()).default([]) }, async ({ sql, args }) => callFor("valtown_sqlite")("valtown", "sqlite_execute", { sql, args }));
   }
 }
 
 // ---------- Worker entry ----------
 
-// Paths that McpAgent needs for discovery/negotiation — no auth required
 const PUBLIC_PATHS = ["/", "/health", "/.well-known/mcp", "/sse"];
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    // Health check — always public
     if (url.pathname === "/health") {
       return new Response(
-        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server", version: "0.4.0" }),
+        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server", version: "0.4.1" }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // OPTIONS — always allow (CORS preflight)
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -699,7 +629,6 @@ export default {
       });
     }
 
-    // Discovery paths — allow unauthenticated so claude.ai handshake succeeds
     const isDiscovery = request.method === "GET" ||
       PUBLIC_PATHS.some(p => url.pathname === p || url.pathname.startsWith(p));
 
