@@ -199,7 +199,7 @@ app.post('/fetch', async (c) => {
   const pages: PageResult[] = await Promise.all(
     urls.slice(0, 10).map(async (url): Promise<PageResult> => {
       try {
-        // Check KV cache first
+        // Check KV cache first — return immediately if hit (no write needed)
         if (kv) {
           const cached = await kv.get(url)
           if (cached) {
@@ -243,7 +243,9 @@ app.post('/fetch', async (c) => {
 
         const result: PageResult = { url, title, content, cached: false }
 
-        // Cache in KV (fire-and-forget)
+        // OPS-021 KV FIX: Only write to KV if URL is not already cached.
+        // Cache hit returns early above — this branch only runs for brand-new URLs.
+        // Prevents burning KV put quota on repeated fetches of the same URLs.
         if (kv && content.length > 100) {
           c.executionCtx.waitUntil(
             kv.put(url, JSON.stringify({ url, title, content }), {
