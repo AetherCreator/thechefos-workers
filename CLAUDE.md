@@ -1,7 +1,7 @@
 
 
 <!-- COGNITIVE-CACHE-START -->
-## 🧠 Tyler's Cognitive Context (auto-generated 2026-04-28)
+## 🧠 Tyler's Cognitive Context (auto-generated 2026-04-29)
 <!-- This section is auto-generated daily from brain/ graph. Do not edit manually. -->
 
 ### Mental Models (top by connection density)
