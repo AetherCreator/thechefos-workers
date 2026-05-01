@@ -7,9 +7,10 @@ compatibility_date = "2026-03-01"
 
 [triggers]
 # 0 5 * * 1 = 5am UTC Mondays — weekly odometer reset
-# 0 6 * * 0 = 6am UTC Sundays — cognitive-cache generate + push (weekly, was daily)
+# 0 6 * * 7 = 6am UTC Sundays — cognitive-cache generate + push (weekly, was daily)
 # Changed from daily (0 6 * * *) to weekly to reduce Worker invocations + GitHub push churn
-crons = ["0 5 * * 1", "0 6 * * 0"]
+# NOTE: Sunday=7 (ISO) instead of 0 (POSIX) — Cloudflare's schedules API rejects 0 with code 10100
+crons = ["0 5 * * 1", "0 6 * * 7"]
 
 [[d1_databases]]
 binding = "BRAIN_DB"
