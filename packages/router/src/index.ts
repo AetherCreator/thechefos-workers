@@ -72,6 +72,12 @@ app.post('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/ap
 app.get('/api/session/usage', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
 app.get('/api/session/usage/summary', (c) => forward(c.req.raw, c.env.BRAIN_GRAPH, '/api'))
 
+// Hunt intelligence pipe (Maestro Clue 3) — brain-graph owns the full /intel/* path
+// brain-graph's Hono routes are POST /intel/log, GET /intel/summary, GET /intel/clue
+// Catch-all so future /intel/* additions need no router change.
+app.all('/intel', (c) => c.env.BRAIN_GRAPH.fetch(c.req.raw))
+app.all('/intel/*', (c) => c.env.BRAIN_GRAPH.fetch(c.req.raw))
+
 // GitHub webhook → brain-write (raw, no prefix strip)
 app.post('/api/webhook/github', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
 
@@ -105,7 +111,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/webhook/github', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/scout/search', '/api/scout/fetch', '/api/scout/health', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/webhook/github', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/scout/search', '/api/scout/fetch', '/api/scout/health', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai', '/intel/log', '/intel/summary', '/intel/clue']
 }))
 
 export default app
