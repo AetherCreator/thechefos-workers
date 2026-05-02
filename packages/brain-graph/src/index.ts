@@ -915,8 +915,40 @@ app.post('/cognitive-cache/generate', async (c) => {
 
 app.post("/intel/log", async (c) => {
   const body = await c.req.json();
+  // Accept aliases — hunter-loop sends `hunt`/`event`, original schema uses `hunt_name`/`status`.
+  // Use ?? (nullish) not || (falsy) so legitimate 0/empty-string values pass through.
+  const hunt_name: string | undefined = body.hunt_name ?? body.hunt;
+  const status: string | undefined = body.status ?? body.event;
+  // clue_number: prefer explicit field, else parse from hunt path/name like "<hunt>/clue-2/..." or "<hunt>_clue-2"
+  let clue_number: number | undefined = body.clue_number;
+  if (clue_number === undefined || clue_number === null) {
+    const haystack = `${hunt_name ?? ""} ${body.ctx_path ?? ""} ${body.sid ?? ""}`;
+    const m = haystack.match(/clue[-_](\d+)/i);
+    if (m) clue_number = parseInt(m[1], 10);
+  }
+  // Required fields per schema (NOT NULL): hunt_name, clue_number, status
+  const missing: string[] = [];
+  if (!hunt_name) missing.push("hunt_name");
+  if (clue_number === undefined || clue_number === null || Number.isNaN(clue_number)) missing.push("clue_number");
+  if (!status) missing.push("status");
+  if (missing.length > 0) {
+    return c.json({ ok: false, error: `Missing required fields: ${missing.join(", ")}`, hint: "Send hunt_name (or hunt), status (or event), clue_number (or include 'clue-<N>' in hunt name/path)" }, 400);
+  }
   try {
-    const result = await c.env.BRAIN_DB.prepare(`INSERT INTO hunt_intelligence (hunt_name, clue_number, clue_title, model_used, status, start_time, end_time, duration_seconds, token_estimate, stuck_count, commit_sha, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(body.hunt_name, body.clue_number, body.clue_title || null, body.model_used || null, body.status, body.start_time || null, body.end_time || null, body.duration_seconds || null, body.token_estimate || null, body.stuck_count || 0, body.commit_sha || null, body.notes || null).run();
+    const result = await c.env.BRAIN_DB.prepare(`INSERT INTO hunt_intelligence (hunt_name, clue_number, clue_title, model_used, status, start_time, end_time, duration_seconds, token_estimate, stuck_count, commit_sha, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      hunt_name,
+      clue_number,
+      body.clue_title ?? null,
+      body.model_used ?? null,
+      status,
+      body.start_time ?? body.ts ?? null,
+      body.end_time ?? null,
+      body.duration_seconds ?? null,
+      body.token_estimate ?? null,
+      body.stuck_count ?? 0,
+      body.commit_sha ?? null,
+      body.notes ?? body.reason ?? null,
+    ).run();
     return c.json({ ok: true, id: result.meta?.last_row_id });
   } catch (e) {
     return c.json({ ok: false, error: (e as Error).message }, 500);
