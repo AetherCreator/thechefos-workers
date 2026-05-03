@@ -6,12 +6,12 @@ export interface Env {
   BRAIN_SEARCH_URL?: string
 }
 
-interface AnthropicMessage {
+export interface AnthropicMessage {
   role: string
   content: string | unknown[]
 }
 
-interface AnthropicRequestBody {
+export interface AnthropicRequestBody {
   model?: string
   messages?: AnthropicMessage[]
   system?: string
