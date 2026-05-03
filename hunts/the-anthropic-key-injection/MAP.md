@@ -24,3 +24,15 @@ Route kid-product traffic to NIM (NVIDIA's free Build tier — already in produc
 
 ## Refs
 OPS-052 (this hunt), OPS-051 (parent: launch-pad clue-2 STUCK), OPS-046/047 (recent parser+babysitter fixes that make this hunt safely autonomous)
+
+## Parallelism
+
+```json
+{
+  "deps": {
+    "1": [],
+    "2": [1],
+    "3": [2]
+  }
+}
+```
