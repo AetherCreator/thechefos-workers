@@ -101,12 +101,91 @@ async function shellExec(env: Env, command: string, timeoutMs = 30000): Promise<
   }
 }
 
+// ---------- GRAPH-INDEX section parser (Wave 1 Hunt B) ----------
+
+/**
+ * Append (or idempotently update) a row in a GRAPH-INDEX.md section.
+ *
+ * Sections are delimited by `## <name>` markdown headers (e.g. "## 06-meta/").
+ * Data rows start with `| \`` (backtick-wrapped tier marker in column 1).
+ *
+ * Match logic:
+ *  - exact section header (`## ${domainSection}`) — also tolerates header
+ *    suffixes like "## 05-knowledge/gamedesign/ ⭐ NEW 2026-04-03" where the
+ *    first whitespace-separated token equals domainSection.
+ *  - row uniqueness keyed on column-2 (filename stem). Existing match → replace.
+ *
+ * Returns { updated, mode } on success; { error: "missing_section" } if not found.
+ */
+export function appendOrUpdateIndexRow(
+  current: string,
+  domainSection: string,
+  filename: string,
+  newRow: string
+): { updated: string; mode: "insert" | "update" } | { error: "missing_section" } {
+  const lines = current.split("\n");
+  const sectionTrim = domainSection.trim();
+
+  // Find section header
+  let sectionStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].startsWith("## ")) continue;
+    const headerName = lines[i].slice(3).trim();
+    if (headerName === sectionTrim) {
+      sectionStart = i;
+      break;
+    }
+    // Tolerate decorated headers: first whitespace-separated token must match
+    const firstToken = headerName.split(/\s+/)[0];
+    if (firstToken === sectionTrim) {
+      sectionStart = i;
+      break;
+    }
+  }
+  if (sectionStart < 0) return { error: "missing_section" };
+
+  // Walk forward past optional blank lines + table header + separator
+  // until first data row OR next section OR EOF
+  let i = sectionStart + 1;
+  while (i < lines.length && !lines[i].startsWith("| `") && !lines[i].startsWith("## ")) {
+    i++;
+  }
+
+  if (i >= lines.length || lines[i].startsWith("## ")) {
+    // Empty section (no existing data rows) — insert at this position
+    lines.splice(i, 0, newRow);
+    return { updated: lines.join("\n"), mode: "insert" };
+  }
+
+  // Walk through all contiguous data rows
+  const dataStart = i;
+  while (i < lines.length && lines[i].startsWith("| `")) {
+    i++;
+  }
+  const dataEnd = i;
+
+  // Check for existing row matching filename in column 2.
+  // Row format: `| \`TIER\` | filename | domain | type | conns | summary |`
+  const escFilename = filename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rowRegex = new RegExp(`^\\|\\s*\`[^\`]+\`\\s*\\|\\s*${escFilename}\\s*\\|`);
+  for (let j = dataStart; j < dataEnd; j++) {
+    if (rowRegex.test(lines[j])) {
+      lines[j] = newRow;
+      return { updated: lines.join("\n"), mode: "update" };
+    }
+  }
+
+  // No existing row in this section — append after last data row
+  lines.splice(dataEnd, 0, newRow);
+  return { updated: lines.join("\n"), mode: "insert" };
+}
+
 // ---------- MCP Agent ----------
 
 export class TheChefOSMCP extends McpAgent<Env> {
   server = new McpServer({
     name: "thechefos-mcp-server",
-    version: "0.4.1",
+    version: "0.5.0",
   });
 
   async init() {
@@ -190,6 +269,137 @@ export class TheChefOSMCP extends McpAgent<Env> {
           return { content: [{ type: "text" as const, text: "No relevant brain context found for this query." }] };
         }
         return { content: [{ type: "text" as const, text: formatBrainContext(results) }] };
+      }
+    );
+
+    // ── Brain Write Tools (Wave 1 Hunt B) ─────────────────────────────────
+    // Expose the existing /api/brain/push Worker as MCP tools for OpenClaw
+    // agents (and Chat-Claude). Three tools: create, update, append-index.
+    // Contract locked in hunts/agent-archivist-brain-write/clue-1/COMPLETE.md.
+
+    const BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push";
+    const BRAIN_WRITE_SECRET = "SuperDuperClaude"; // matches brain-write Worker; rotate via OPS-001
+
+    this.server.tool(
+      "brain_write_create",
+      "Create a new brain/ node. Auto-prepends standard frontmatter header (Date, Domain, Tags). Returns commit SHA + URL.",
+      {
+        domain: z.enum([
+          "00-session", "01-daily", "02-personal", "03-professional",
+          "04-projects", "05-knowledge", "06-meta", "07-meta",
+        ]).describe("Top-level brain/ domain folder"),
+        slug: z.string().regex(/^[a-z0-9][a-z0-9-]{2,80}$/).describe("kebab-case file slug, no extension"),
+        subpath: z.string().optional().describe("Optional sub-folder under domain (e.g. 'chef', 'patterns')"),
+        title: z.string().min(4).max(200).describe("Human title, becomes h1 of node"),
+        body: z.string().min(1).max(45000).describe("Markdown body (excluding frontmatter — tool prepends)"),
+        tags: z.array(z.string()).optional().describe("Optional list of tags (joined as space-separated `Tags:` line)"),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("ISO yyyy-mm-dd, defaults to today"),
+        commit_message: z.string().min(4).max(200).describe("Git commit message"),
+      },
+      async ({ domain, slug, subpath, title, body, tags, date, commit_message }) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const path = `brain/${domain}${subpath ? `/${subpath}` : ""}/${slug}.md`;
+        const headerLines = [
+          `# ${title}`,
+          ``,
+          `Date: ${date || today}`,
+          `Domain: ${domain.replace(/^\d+-/, "")}`,
+        ];
+        if (tags && tags.length) {
+          headerLines.push(`Tags: ${tags.map(t => t.startsWith("#") ? t : `#${t}`).join(" ")}`);
+        }
+        headerLines.push("");
+        const content = headerLines.join("\n") + "\n" + body;
+
+        const res = await fetch(BRAIN_WRITE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-webhook-secret": BRAIN_WRITE_SECRET,
+          },
+          body: JSON.stringify({ path, content, message: commit_message }),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `worker_${res.status}`, detail }) }] };
+        }
+        const data = await res.json() as { sha?: string; commit_url?: string };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, path, sha: data.sha, commit_url: data.commit_url }) }] };
+      }
+    );
+
+    this.server.tool(
+      "brain_write_update",
+      "Replace the body of an existing brain/ node. Caller responsible for preserving frontmatter if desired.",
+      {
+        path: z.string().describe('Full path under brain/ (e.g. "06-meta/some-node.md")'),
+        body: z.string().min(1).max(45000).describe("New full content (replaces existing)"),
+        commit_message: z.string().min(4).max(200),
+      },
+      async ({ path, body, commit_message }) => {
+        let normalized = path;
+        if (!normalized.startsWith("brain/")) normalized = `brain/${normalized}`;
+        if (normalized.includes("..")) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "validation", detail: "Path traversal not allowed" }) }] };
+        }
+
+        const res = await fetch(BRAIN_WRITE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-webhook-secret": BRAIN_WRITE_SECRET },
+          body: JSON.stringify({ path: normalized, content: body, message: commit_message }),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `worker_${res.status}`, detail }) }] };
+        }
+        const data = await res.json() as { sha?: string; commit_url?: string };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, path: normalized, sha: data.sha, commit_url: data.commit_url }) }] };
+      }
+    );
+
+    this.server.tool(
+      "brain_write_append_index",
+      "Append (or idempotently update) a row in brain/GRAPH-INDEX.md for a node. Updates in place if a row with the same filename exists in the named section; otherwise appends after the section's last data row.",
+      {
+        domain_section: z.string().describe('Section heading in GRAPH-INDEX (e.g. "06-meta/")'),
+        node_path: z.string().describe('Path under brain/ (e.g. "06-meta/some-node.md")'),
+        title: z.string().describe("Node title (currently informational; not rendered into the row)"),
+        summary: z.string().max(80).describe("Short summary, 1 line"),
+        tier: z.enum(["HOT", "WARM", "COLD"]).default("HOT"),
+        domain: z.string().describe('Domain tag (e.g. "meta")'),
+        type: z.string().default("note").describe('Type tag (e.g. "note", "decision", "insight")'),
+        commit_message: z.string().min(4).max(200),
+      },
+      async ({ domain_section, node_path, summary, tier, domain, type, commit_message }) => {
+        let current = "";
+        try {
+          current = await githubGetFile(this.env, "brain/GRAPH-INDEX.md");
+        } catch {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "graph_index_not_found" }) }] };
+        }
+
+        const filename = (node_path.split("/").pop() || "").replace(/\.md$/, "");
+        if (!filename) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "validation", detail: "Could not derive filename from node_path" }) }] };
+        }
+
+        const newRow = `| \`${tier}\` | ${filename} | ${domain} | ${type} | 0 | ${summary} |`;
+        const result = appendOrUpdateIndexRow(current, domain_section, filename, newRow);
+        if ("error" in result) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: result.error, detail: `Section "## ${domain_section}" not found in GRAPH-INDEX.md` }) }] };
+        }
+
+        const res = await fetch(BRAIN_WRITE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-webhook-secret": BRAIN_WRITE_SECRET },
+          body: JSON.stringify({ path: "brain/GRAPH-INDEX.md", content: result.updated, message: commit_message }),
+        });
+        if (!res.ok) {
+          const detail = await res.text();
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `worker_${res.status}`, detail }) }] };
+        }
+        const data = await res.json() as { sha?: string; commit_url?: string };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, mode: result.mode, sha: data.sha, commit_url: data.commit_url }) }] };
       }
     );
 
@@ -613,7 +823,7 @@ export default {
 
     if (url.pathname === "/health") {
       return new Response(
-        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server", version: "0.4.1" }),
+        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server", version: "0.5.0" }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
