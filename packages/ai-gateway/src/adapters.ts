@@ -9,7 +9,7 @@ export interface OpenAIRequestBody {
 
 export interface OpenAIResponse {
   id: string;
-  choices: [{ message: { role: string; content: string }; finish_reason: string }];
+  choices: Array<{ index?: number; message: { role: string; content: string }; finish_reason: string }>;
   usage: { prompt_tokens: number; completion_tokens: number };
 }
 
