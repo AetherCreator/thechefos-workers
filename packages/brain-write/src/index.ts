@@ -4,7 +4,8 @@ import { Hono } from 'hono'
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
 const COMMITTER = { name: 'SuperClaude Brain Ops', email: 'brain-ops@thechefos.app' }
-const MAX_CONTENT_SIZE = 50 * 1024 // 50KB
+const MAX_CONTENT_SIZE = 256 * 1024 // 256KB (was 50KB; raised so explicit GRAPH-INDEX writes pass)
+const GRAPH_INDEX_PATH = 'brain/GRAPH-INDEX.md'
 const GITHUB_API = 'https://api.github.com'
 const SESSION_STATE_KEY = 'session:state'
 
@@ -203,7 +204,14 @@ app.post('/api/brain/push', async (c) => {
       commitSha = createData.commit.sha
     }
 
-    await appendToGraphIndex(body.path, body.message, headers)
+    // Skip auto-append when the explicit target IS GRAPH-INDEX itself —
+    // otherwise an explicit GRAPH-INDEX update would trigger a recursive
+    // self-append of a meta-row pointing at GRAPH-INDEX.md. This unlocks
+    // the brain_write_append_index MCP tool (Wave 1 Hunt B) for clean
+    // intelligent index updates without dumb auto-append clobbering them.
+    if (body.path !== GRAPH_INDEX_PATH) {
+      await appendToGraphIndex(body.path, body.message, headers)
+    }
     return c.json({ ok: true, sha: commitSha, path: body.path, updated: !!existingFile })
   } catch (err) {
     return c.json({ error: 'Internal error', details: String(err) }, 500)
