@@ -185,7 +185,7 @@ export function appendOrUpdateIndexRow(
 export class TheChefOSMCP extends McpAgent<Env> {
   server = new McpServer({
     name: "thechefos-mcp-server",
-    version: "0.5.0",
+    version: "0.6.0",
   });
 
   async init() {
@@ -400,6 +400,101 @@ export class TheChefOSMCP extends McpAgent<Env> {
         }
         const data = await res.json() as { sha?: string; commit_url?: string };
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, mode: result.mode, sha: data.sha, commit_url: data.commit_url }) }] };
+      }
+    );
+
+    // ── Ops Board Tools (Wave 1 Hunt A) ────────────────────────────────────
+    // Expose the new /api/ops/* Worker routes (in brain-write package) as MCP
+    // tools. Five tools: list, get, claim, complete, escalate. Contract locked
+    // in hunts/agent-conductor-ops-board/clue-1/COMPLETE.md.
+
+    const OPS_BOARD_URL = "https://api.thechefos.app/api/ops";
+    const OPS_BOARD_SECRET = "SuperDuperClaude"; // matches brain-write Worker; rotate via OPS-001
+
+    this.server.tool(
+      "ops_board_list",
+      "List items from OPS-BOARD by filter. Returns items + board SHA. Items have {id, title, section, domain?, status_note?}.",
+      {
+        filter: z.enum(["open", "blocked", "stale", "all"]).default("open")
+          .describe("'open' = urgent+active+backlog (default); 'blocked' = urgent only; 'stale' = age>14d (TBD); 'all' = everything"),
+      },
+      async ({ filter }) => {
+        const res = await fetch(`${OPS_BOARD_URL}/list?filter=${filter}`, {
+          headers: { "x-webhook-secret": OPS_BOARD_SECRET },
+        });
+        const text = await res.text();
+        return { content: [{ type: "text" as const, text }] };
+      }
+    );
+
+    this.server.tool(
+      "ops_board_get",
+      "Fetch a single OPS-BOARD item by ID (e.g. 'OPS-024', 'WAVE1-A'). Returns 404-shaped error if not found.",
+      {
+        id: z.string().describe("Item ID exactly as it appears in OPS-BOARD (e.g. 'OPS-024', 'WAVE1-A', 'task-the-den-demo')"),
+      },
+      async ({ id }) => {
+        const res = await fetch(`${OPS_BOARD_URL}/get/${encodeURIComponent(id)}`, {
+          headers: { "x-webhook-secret": OPS_BOARD_SECRET },
+        });
+        const text = await res.text();
+        return { content: [{ type: "text" as const, text }] };
+      }
+    );
+
+    this.server.tool(
+      "ops_board_claim",
+      "Move an OPS-BOARD item from URGENT/BACKLOG to ACTIVE. Annotates Notes cell with '(claimed by AGENT, YYYY-MM-DD)'. No-op if already in ACTIVE (returns already_claimed).",
+      {
+        id: z.string().describe("Item ID to claim"),
+        agent: z.string().min(2).max(40).describe("Agent claiming the item (e.g. 'conductor', 'archivist')"),
+      },
+      async ({ id, agent }) => {
+        const res = await fetch(`${OPS_BOARD_URL}/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-webhook-secret": OPS_BOARD_SECRET },
+          body: JSON.stringify({ id, agent }),
+        });
+        const text = await res.text();
+        return { content: [{ type: "text" as const, text }] };
+      }
+    );
+
+    this.server.tool(
+      "ops_board_complete",
+      "Move an OPS-BOARD item from ACTIVE to COMPLETED. Item must be in ACTIVE first (use ops_board_claim if it's in URGENT/BACKLOG). Returns not_in_active error otherwise.",
+      {
+        id: z.string().describe("Item ID to complete"),
+        summary: z.string().min(4).max(500).describe("Short summary of what was done; appears as the Notes cell in COMPLETED row"),
+        evidence_url: z.string().url().optional().describe("Optional URL to commit, deploy, or evidence; gets appended to summary as a markdown link"),
+      },
+      async ({ id, summary, evidence_url }) => {
+        const res = await fetch(`${OPS_BOARD_URL}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-webhook-secret": OPS_BOARD_SECRET },
+          body: JSON.stringify({ id, summary, evidence_url }),
+        });
+        const text = await res.text();
+        return { content: [{ type: "text" as const, text }] };
+      }
+    );
+
+    this.server.tool(
+      "ops_board_escalate",
+      "Post a Telegram alert about an OPS-BOARD item without mutating the board. Used for 3-strike escalations. KNOWN ISSUE: /api/telegram doesn't currently relay (OPS-041) — relay_status=200 does NOT prove delivery.",
+      {
+        id: z.string().describe("Item ID to escalate"),
+        reason: z.string().min(4).max(500).describe("Why this is being escalated"),
+        severity: z.enum(["warn", "critical"]).default("warn"),
+      },
+      async ({ id, reason, severity }) => {
+        const res = await fetch(`${OPS_BOARD_URL}/escalate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-webhook-secret": OPS_BOARD_SECRET },
+          body: JSON.stringify({ id, reason, severity }),
+        });
+        const text = await res.text();
+        return { content: [{ type: "text" as const, text }] };
       }
     );
 
@@ -823,7 +918,7 @@ export default {
 
     if (url.pathname === "/health") {
       return new Response(
-        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server", version: "0.5.0" }),
+        JSON.stringify({ status: "ok", worker: "thechefos-mcp-server", version: "0.6.0" }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
