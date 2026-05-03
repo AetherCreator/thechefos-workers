@@ -87,6 +87,9 @@ app.all('/api/session/*', (c) => forward(c.req.raw, c.env.BRAIN_WRITE, '/api/ses
 // Brain write webhook (catch-all for /api/brain/*) — must come AFTER specific brain routes above
 app.all('/api/brain/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
 
+// OPS-BOARD routes (Wave 1 Hunt A) — brain-write owns full /api/ops/* path
+app.all('/api/ops/*', (c) => c.env.BRAIN_WRITE.fetch(c.req.raw))
+
 // Scout — web search + fetch (strip /api/scout so downstream sees /search, /fetch)
 app.post('/api/scout/search', (c) => forward(c.req.raw, c.env.SCOUT, '/api/scout'))
 app.post('/api/scout/fetch', (c) => forward(c.req.raw, c.env.SCOUT, '/api/scout'))
@@ -111,7 +114,7 @@ app.all('/ai/*', (c) => c.env.AI_GATEWAY.fetch(c.req.raw))
 app.get('/health', (c) => c.json({
   status: 'ok',
   worker: 'thechefos-router',
-  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/webhook/github', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/scout/search', '/api/scout/fetch', '/api/scout/health', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai', '/intel/log', '/intel/summary', '/intel/clue']
+  routes: ['/oauth', '/api/brain/dashboard', '/api/brain/patterns/scan', '/api/brain/patterns/ready', '/api/brain/patterns/graduate', '/api/brain/instinct/pending', '/api/brain/instinct/graduate', '/api/brain/ops/vitals', '/api/brain/cognitive-cache/generate', '/api/brain/graph', '/api/brain/search', '/api/brain/index', '/api/webhook/github', '/api/session/odometer', '/api/session/usage', '/api/session', '/api/brain', '/api/ops', '/api/scout/search', '/api/scout/fetch', '/api/scout/health', '/api/proxy', '/api/mcp', '/api/telegram', '/api/claude', '/ai', '/intel/log', '/intel/summary', '/intel/clue']
 }))
 
 export default app
