@@ -147,7 +147,7 @@ export default {
             id: `wai-${crypto.randomUUID()}`,
             choices: [{ 
               index: 0,
-              message: { role: 'assistant' as const, content: aiResp.response ?? '' },
+              message: { role: 'assistant' as const, content: String(aiResp.response ?? '') },
               finish_reason: 'stop' as const,
             }],
             usage: {
