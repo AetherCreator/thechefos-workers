@@ -223,12 +223,14 @@ jobs:
           printf '%s' "$NIM"         | npx wrangler secret put NIM_API_KEY         || true
           printf '%s' "$BRAIN_WRITE" | npx wrangler secret put BRAIN_WRITE_SECRET  || true
           printf '%s' "$RUN_SECRET"  | npx wrangler secret put HARVEST_RUN_SECRET  || true
+          printf '%s' "$GH_TOKEN"    | npx wrangler secret put GITHUB_TOKEN        || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           NIM: ${{ secrets.LOCKE_NIM_API_KEY }}
           BRAIN_WRITE: ${{ secrets.LOCKE_BRAIN_WRITE_SECRET }}
           RUN_SECRET: ${{ secrets.LOCKE_HARVEST_RUN_SECRET }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
   deploy-council:
     name: Deploy Council
@@ -268,12 +270,15 @@ jobs:
         # add COUNCIL_NIM_API_KEY (same value as LOCKE_NIM_API_KEY — the NIM key from
         # /opt/secrets/nvidia-api-key), COUNCIL_BRAIN_WRITE_SECRET (= "SuperDuperClaude"),
         # COUNCIL_RUN_SECRET (random 32-char), and optionally COUNCIL_TELEGRAM_TOKEN.
+        # GITHUB_TOKEN is required to read leads from the private brain repo —
+        # reuses the same GH_TOKEN GHA secret already used by deploy-proxy.
         if: steps.check.outputs.exists == 'true'
         working-directory: packages/council
         run: |
           printf '%s' "$NIM"             | npx wrangler secret put NIM_API_KEY              || true
           printf '%s' "$BRAIN_WRITE"     | npx wrangler secret put BRAIN_WRITE_SECRET       || true
           printf '%s' "$RUN_SECRET"      | npx wrangler secret put COUNCIL_RUN_SECRET       || true
+          printf '%s' "$GH_TOKEN"        | npx wrangler secret put GITHUB_TOKEN             || true
           printf '%s' "$TELEGRAM_TOKEN"  | npx wrangler secret put COUNCIL_TELEGRAM_TOKEN   || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
@@ -281,4 +286,5 @@ jobs:
           NIM: ${{ secrets.COUNCIL_NIM_API_KEY }}
           BRAIN_WRITE: ${{ secrets.COUNCIL_BRAIN_WRITE_SECRET }}
           RUN_SECRET: ${{ secrets.COUNCIL_RUN_SECRET }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.COUNCIL_TELEGRAM_TOKEN }}
