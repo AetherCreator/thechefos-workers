@@ -17,6 +17,7 @@ interface Env {
   SCHEMA_VERSION: string;
   MAX_LEADS_PER_RUN: string;
   WALL_CLOCK_BUDGET_MS: string;
+  PER_QUERY_SLEEP_MS: string;
   NIM_BUDGET: string;
   // Secrets (set via `wrangler secret put`):
   NIM_API_KEY: string;
@@ -177,12 +178,17 @@ function extractJsonArray(text: string): any[] {
   return Array.isArray(parsed) ? parsed : [];
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: number; discarded: number; status: string; session_id: string }> {
   const sessionId = crypto.randomUUID();
   const startedAt = Date.now();
   const wallClockBudget = parseInt(env.WALL_CLOCK_BUDGET_MS, 10);
   const maxLeads = parseInt(env.MAX_LEADS_PER_RUN, 10);
   const nimBudget = parseInt(env.NIM_BUDGET, 10);
+  const perQuerySleep = parseInt(env.PER_QUERY_SLEEP_MS || '0', 10);
 
   await logIntel(env, { event: 'harvest_start', session_id: sessionId, trigger });
 
@@ -191,11 +197,16 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   let nimCalls = 0;
 
   // Phase 1 — SearXNG meta-search
+  let queryIdx = 0;
   for (const q of HUNT_QUERIES) {
     if (Date.now() - startedAt > wallClockBudget) {
       await logIntel(env, { event: 'budget_exhausted', reason: 'wall_clock_phase1', session_id: sessionId });
       break;
     }
+    if (queryIdx > 0 && perQuerySleep > 0) {
+      await sleep(perQuerySleep);
+    }
+    queryIdx++;
     try {
       const results = await searxngSearch(q, env);
       await logIntel(env, { event: 'query_executed', session_id: sessionId, query: q, count: results.length });

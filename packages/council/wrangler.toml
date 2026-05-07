@@ -21,8 +21,8 @@ BRAIN_RAW_BASE = "https://raw.githubusercontent.com/AetherCreator/SuperClaude/ma
 BRAIN_GH_API_BASE = "https://api.github.com/repos/AetherCreator/SuperClaude/contents"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
-WALL_CLOCK_BUDGET_MS = "30000"
+WALL_CLOCK_BUDGET_MS = "90000"
 # Bumped 20000 -> 30000 after c4-smoke-stub fire 1 saw skeptic time out at exactly
 # 20s. Nemotron-120B reasoning + JSON output can take 25-28s under NIM load.
-PER_JUDGE_TIMEOUT_MS = "30000"
+PER_JUDGE_TIMEOUT_MS = "60000"
 TYLER_CHAT_ID = "6091970994"
