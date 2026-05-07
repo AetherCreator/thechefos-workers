@@ -233,16 +233,29 @@ jobs:
   deploy-council:
     name: Deploy Council
     runs-on: ubuntu-latest
-    # Skip cleanly until Hunter (C6 fire) cps staged files into packages/council/.
-    # `hashFiles` returns empty string when no files match, so this `if` evaluates
-    # false until packages/council/wrangler.toml exists.
-    if: ${{ hashFiles('packages/council/wrangler.toml') != '' }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check if package exists
+        # Step-level guard pattern (replaces the broken job-level hashFiles `if:` —
+        # GHA rejected `if: ${{ hashFiles(...) }}` at workflow-validate time for
+        # opaque reasons, even though the YAML parses cleanly locally). Step-level
+        # `if:` against a step output works reliably and produces a clean "skipped"
+        # status for downstream steps when packages/council/ isn't yet shipped.
+        id: check
+        run: |
+          if [ -f packages/council/wrangler.toml ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "📦 packages/council/ present — proceeding with deploy"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "📦 packages/council/ not yet shipped — skipping deploy steps (will activate when C6 cp commit lands)"
+          fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.exists == 'true'
         with:
           node-version: '20'
       - name: Deploy
+        if: steps.check.outputs.exists == 'true'
         working-directory: packages/council
         run: |
           npm install --legacy-peer-deps
@@ -255,6 +268,7 @@ jobs:
         # add COUNCIL_NIM_API_KEY (same value as LOCKE_NIM_API_KEY — the NIM key from
         # /opt/secrets/nvidia-api-key), COUNCIL_BRAIN_WRITE_SECRET (= "SuperDuperClaude"),
         # COUNCIL_RUN_SECRET (random 32-char), and optionally COUNCIL_TELEGRAM_TOKEN.
+        if: steps.check.outputs.exists == 'true'
         working-directory: packages/council
         run: |
           printf '%s' "$NIM"             | npx wrangler secret put NIM_API_KEY              || true
