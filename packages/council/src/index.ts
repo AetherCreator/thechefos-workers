@@ -1,8 +1,11 @@
 // Council Worker — implements COUNCIL-SCHEMA.md v1.0
-// Reads leads from brain/05-leads/, runs 3-judge NIM Nemotron-120B deliberation in parallel,
+// Reads leads from brain/05-leads/, runs 3-judge deliberation in parallel,
 // writes verdict sidecars at brain/05-leads/{date}/{lead_id}.verdict.json.
 //
-// MVP scope: NIM Nemotron-120B for all 3 judges (Ollama-via-tunnel deferred to v1.1).
+// Model: Workers AI Kimi K2.6 in-network (pivoted 2026-05-07 from NVIDIA NIM
+// Nemotron-120B). Mirrors Locke's session-9 pivot — vendor independence + escape
+// from NVIDIA edge 524 ceiling. Sync mode via env.AI.run() binding.
+//
 // MVP idempotency: verdict-file-existence check (no KV locks).
 // Endpoints:
 //   GET  /health                      — liveness + config readback
@@ -12,14 +15,15 @@
 //   scheduled() (when cron enabled)   — same as /sweep
 
 interface Env {
+  AI: any;                           // Workers AI binding (Kimi K2.6 in-network)
   PERSONA: string;
   COUNCIL_SCHEMA_VERSION: string;
   SUPPORTED_LEAD_VERSIONS: string;   // JSON array as string
   CONFIDENCE_FILTER: string;         // JSON array
   PATTERN_TYPE_FILTER: string;       // JSON array
   THRESHOLD: string;                 // float as string
-  NIM_URL: string;
-  NIM_MODEL: string;
+  NIM_URL: string;                   // legacy — no longer read post Kimi pivot
+  NIM_MODEL: string;                 // now Workers AI model id (e.g. @cf/moonshotai/kimi-k2.6)
   BRAIN_RAW_BASE: string;
   BRAIN_GH_API_BASE: string;
   BRAIN_WRITE_URL: string;
@@ -28,7 +32,7 @@ interface Env {
   PER_JUDGE_TIMEOUT_MS: string;
   TYLER_CHAT_ID: string;
   // Secrets (set via `wrangler secret put`):
-  NIM_API_KEY: string;
+  NIM_API_KEY: string;               // legacy — no longer read post Kimi pivot
   BRAIN_WRITE_SECRET: string;
   COUNCIL_RUN_SECRET: string;
   GITHUB_TOKEN: string;              // PAT with `repo` scope — required to read private brain
@@ -188,7 +192,8 @@ async function writeBrain(path: string, content: string, message: string, env: E
 
 // Strip Nemotron-style <think>...</think> reasoning blocks, then markdown fences,
 // then locate the JSON object boundaries. Defensive against preambles, postambles,
-// and reasoning bleed-through.
+// and reasoning bleed-through. (Kimi K2.6 returns reasoning_content separately
+// from content, so the <think> strip is mostly defensive but harmless.)
 function extractJsonObject(text: string): any {
   const noThink = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const noFence = noThink.replace(/^```(?:json)?\s*/m, '').replace(/```\s*$/m, '').trim();
@@ -204,9 +209,13 @@ function geometricMean(scores: number[]): number {
 }
 
 // =============================================================================
-// JUDGE CALL — single NIM round-trip with timeout, JSON parse, validation.
-// Always returns either a valid scored response or an {abstain: true} object.
-// Never throws into the caller.
+// JUDGE CALL — single Workers AI in-network round-trip with Promise.race timeout,
+// JSON parse, validation. Always returns either a valid scored response or an
+// {abstain: true} object. Never throws into the caller.
+//
+// Pivoted 2026-05-07 from HTTP fetch to NVIDIA NIM → env.AI.run() binding for
+// Kimi K2.6. Promise.race wrapper because env.AI.run() doesn't accept AbortSignal;
+// 3 parallel judges still need bounded wall-clock per judge.
 // =============================================================================
 
 async function callJudge(
@@ -216,36 +225,40 @@ async function callJudge(
   env: Env
 ): Promise<any> {
   const timeoutMs = parseInt(env.PER_JUDGE_TIMEOUT_MS, 10);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const r = await fetch(env.NIM_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.NIM_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        model: env.NIM_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 4096,
-        stream: false
-      }),
-      signal: controller.signal
+
+  const aiCall = (async () => {
+    const result: any = await env.AI.run(env.NIM_MODEL, {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 8192   // judge JSON output is ~1KB; Kimi reasoning_content can be 4-6x
+                         // that. 8192 is enough headroom without overspend (vs Locke's 16384
+                         // for multi-lead arrays). Bump to 12288 if `finish_reason: length`.
     });
-    if (!r.ok) {
-      return { judge: name, abstain: true, reason: `nim_${r.status}` };
+    // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] }
+    // OpenAI-compat. Kimi K2.6 returns OpenAI-compat by default.
+    const text =
+      (typeof result?.response === 'string' && result.response) ||
+      result?.choices?.[0]?.message?.content ||
+      result?.result?.response ||
+      '';
+    if (!text) {
+      throw new Error(`AI binding empty: keys=${Object.keys(result || {}).join(',')} | preview=${JSON.stringify(result).slice(0, 400)}`);
     }
-    const data: any = await r.json();
-    const text = data?.choices?.[0]?.message?.content ?? '';
+    return text;
+  })();
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('timeout')), timeoutMs);
+  });
+
+  try {
+    const text = await Promise.race([aiCall, timeoutPromise]);
     let parsed: any;
     try {
-      parsed = extractJsonObject(text);
+      parsed = extractJsonObject(text as string);
     } catch (e: any) {
       return { judge: name, abstain: true, reason: `parse_error: ${String(e?.message ?? e).slice(0, 80)}` };
     }
@@ -260,12 +273,10 @@ async function callJudge(
     }
     return parsed;
   } catch (e: any) {
-    if (e?.name === 'AbortError') {
+    if (e?.message === 'timeout') {
       return { judge: name, abstain: true, reason: 'timeout' };
     }
-    return { judge: name, abstain: true, reason: `fetch_error: ${String(e?.message ?? e).slice(0, 80)}` };
-  } finally {
-    clearTimeout(timer);
+    return { judge: name, abstain: true, reason: `ai_error: ${String(e?.message ?? e).slice(0, 80)}` };
   }
 }
 
