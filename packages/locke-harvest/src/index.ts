@@ -249,21 +249,29 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
 
   // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only)
   let leads: any[] = [];
+  let nimText = '';
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
     const userPrompt = buildUserPrompt(candidates.slice(0, 12));
-    const text = await callNim(SYSTEM_PROMPT, userPrompt, env);
+    nimText = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimCalls++;
-    leads = extractJsonArray(text);
+    leads = extractJsonArray(nimText);
   } catch (e: any) {
     const errMsg = String(e?.message ?? e);
     const errStack = String(e?.stack ?? '');
     await logIntel(env, { event: 'nim_failed', session_id: sessionId, error: errMsg });
-    // Diagnostic backup: intel/log isn't reaching us cleanly; persist the error to brain.
+    // Diagnostic: include raw NIM text preview so we can see what came back.
     try {
       await writeBrain(
         `${env.BRAIN_PATH}/_drafts/nim-error-${sessionId}.json`,
-        JSON.stringify({ session_id: sessionId, error: errMsg, stack: errStack.slice(0, 2000), timestamp: new Date().toISOString() }, null, 2),
+        JSON.stringify({
+          session_id: sessionId,
+          error: errMsg,
+          stack: errStack.slice(0, 2000),
+          nim_text_length: nimText.length,
+          nim_text_preview: nimText.slice(0, 5000),
+          timestamp: new Date().toISOString()
+        }, null, 2),
         `locke-harvest debug: nim error ${sessionId}`,
         env
       );
