@@ -1,0 +1,20 @@
+name = "locke-harvest"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "cc231edbff18405233612d7afb657f1f"
+
+[triggers]
+crons = ["0 0 * * 0"]
+
+[vars]
+PERSONA = "locke-lamora"
+BRAIN_PATH = "brain/05-leads"
+SEARXNG_URL = "https://searxng-tunnel.thechefos.app/search"
+INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
+BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
+GEMINI_MODEL = "gemini-2.0-flash"
+SCHEMA_VERSION = "locke-1.0"
+MAX_LEADS_PER_RUN = "5"
+WALL_CLOCK_BUDGET_MS = "480000"
+GEMINI_BUDGET = "50"
