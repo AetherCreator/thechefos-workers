@@ -52,10 +52,13 @@ Rules:
 Return ONLY a JSON array of leads. No prose. No markdown fences. No commentary. No <think> blocks in your final output.`;
 
 function buildUserPrompt(results: Array<{ url: string; title: string; snippet: string }>): string {
+  // Truncate snippets to keep NIM input predictable; verbose Reddit snippets can be 500+ chars,
+  // and 12 candidates * 500 chars + reasoning overhead pushed Cloudflare's subrequest abort 2026-05-07.
+  const trimmed = results.map(r => ({ url: r.url, title: (r.title || '').slice(0, 120), snippet: (r.snippet || '').slice(0, 240) }));
   return `Analyze these search results for product demand signals.
 
 Search results:
-${JSON.stringify(results, null, 2)}
+${JSON.stringify(trimmed, null, 2)}
 
 For each potential opportunity (max 5), return JSON matching this exact shape:
 {
@@ -128,7 +131,7 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
       temperature: 0.3,
       // Nemotron reasoning consumes a meaningful share of output tokens; 8192 keeps
       // headroom for the final JSON array after the model's internal thinking.
-      max_tokens: 8192,
+      max_tokens: 4096,
       stream: false
     })
   });
@@ -229,7 +232,7 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   let leads: any[] = [];
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
-    const userPrompt = buildUserPrompt(candidates.slice(0, 25));
+    const userPrompt = buildUserPrompt(candidates.slice(0, 12));
     const text = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimCalls++;
     leads = extractJsonArray(text);
