@@ -9,6 +9,7 @@ interface Env {
   PERSONA: string;
   BRAIN_PATH: string;
   SEARXNG_URL: string;
+  SEARXNG_ENGINES: string;        // comma-separated engine list — pin to engines that don't bot-block
   INTEL_LOG_URL: string;
   BRAIN_WRITE_URL: string;
   NIM_URL: string;
@@ -96,6 +97,13 @@ async function searxngSearch(query: string, env: Env): Promise<Array<{ url: stri
   url.searchParams.set('q', query);
   url.searchParams.set('format', 'json');
   url.searchParams.set('safesearch', '0');
+  // Pin engines to avoid the CAPTCHA/access-denied tax of free meta-search engines
+  // (DDG/Qwant/Karmasearch/Startpage all bot-block under burst load). Brave + Bing
+  // are typically the most reliable for our `site:reddit.com` query shape; tunable
+  // from wrangler.toml without code changes.
+  if (env.SEARXNG_ENGINES) {
+    url.searchParams.set('engines', env.SEARXNG_ENGINES);
+  }
   const r = await fetch(url.toString(), { headers: { 'User-Agent': 'locke-harvest/1.0' } });
   if (!r.ok) throw new Error(`SearXNG ${r.status}`);
   const data: any = await r.json();
@@ -285,7 +293,7 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health') {
-      return Response.json({ ok: true, persona: env.PERSONA, schema: env.SCHEMA_VERSION, model: env.NIM_MODEL });
+      return Response.json({ ok: true, persona: env.PERSONA, schema: env.SCHEMA_VERSION, model: env.NIM_MODEL, engines: env.SEARXNG_ENGINES || 'all' });
     }
     if (url.pathname === '/run' && request.method === 'POST') {
       const secret = url.searchParams.get('secret') ?? request.headers.get('x-harvest-secret');
