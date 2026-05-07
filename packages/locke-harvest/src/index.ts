@@ -116,47 +116,29 @@ async function searxngSearch(query: string, env: Env): Promise<Array<{ url: stri
 }
 
 async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
-  // Workers AI binding (in-network) — bypasses NVIDIA NIM edge 524 timeout
-  // observed on smokes 2-5 (2026-05-07). Kimi K2.6 frontier-scale, agentic-optimized.
-  // Streaming preserves connection liveness; SSE chunks flow as Kimi generates.
-  const stream: ReadableStream<Uint8Array> = await env.AI.run(env.NIM_MODEL, {
+  // Workers AI binding (in-network), Kimi K2.6 sync mode.
+  // Sync because: in-network calls don't need streaming for liveness (vs NVIDIA edge 524
+  // which forced streaming). Sync response is simpler and the result shape is documented.
+  const result: any = await env.AI.run(env.NIM_MODEL, {
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
     ],
     temperature: 0.3,
-    max_tokens: 4096,
-    stream: true
+    max_tokens: 4096
   });
-  if (!stream) throw new Error('AI binding: no stream returned');
-
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let content = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice(5).trim();
-      if (payload === '[DONE]') return content;
-      try {
-        const chunk: any = JSON.parse(payload);
-        // Handle both chunk shapes: Workers AI native ({response}) and OpenAI-compat ({choices})
-        const delta = chunk?.response ?? chunk?.choices?.[0]?.delta?.content;
-        if (typeof delta === 'string') content += delta;
-      } catch (_) {
-        // Malformed SSE chunk - skip and keep streaming
-      }
-    }
+  // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] } OpenAI-compat
+  // Capture both + a raw-keys fallback for unanticipated shapes.
+  const text =
+    (typeof result?.response === 'string' && result.response) ||
+    result?.choices?.[0]?.message?.content ||
+    result?.result?.response ||
+    '';
+  if (!text) {
+    // Surface the actual shape into the error path via JSON-serialized keys preview
+    throw new Error(`AI binding empty: keys=${Object.keys(result || {}).join(',')} | preview=${JSON.stringify(result).slice(0, 600)}`);
   }
-  return content;
+  return text;
 }
 
 function isValidLead(lead: any): { ok: boolean; reason?: string } {
