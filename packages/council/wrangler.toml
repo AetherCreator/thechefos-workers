@@ -4,9 +4,12 @@ compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "cc231edbff18405233612d7afb657f1f"
 
-# [triggers] block intentionally omitted for MVP — restore as
-# crons = ["0 1 * * SUN"] (1h after Locke's weekly fire) once Kimi smoke is green.
-# Use named-day form per the cf-cron-strictness pattern (avoid "0 0 * * 0").
+# Cron restored 2026-05-07 evening (A3 of NEXT-SESSION fork). 1h after Locke's
+# weekly fire so any new leads get deliberated same cycle. Sunday 01:00 UTC =
+# Saturday 6pm PT. Use named-day form per cf-cron-strictness pattern (numeric
+# "0 1 * * 0" was rejected with code 10100 on first deploy attempt).
+[triggers]
+crons = ["0 1 * * SUN"]
 
 [vars]
 PERSONA = "council"
@@ -29,8 +32,9 @@ BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
 WALL_CLOCK_BUDGET_MS = "90000"
 # Per-judge timeout 60s — was needed for NIM Nemotron edge latency. Kimi K2.6
-# in-network should be faster but reasoning_content can still chew time. 60s
-# gives safe headroom; tune down to 30-45s after smoke calibration if reliable.
+# in-network smoke (2026-05-07) ran 18.7s wall on stub lead — actual per-judge
+# usage closer to 15-20s. 60s gives massive headroom; tunable down to 30-45s
+# after 2-3 cron cycles validate consistent performance.
 PER_JUDGE_TIMEOUT_MS = "60000"
 TYLER_CHAT_ID = "6091970994"
 
