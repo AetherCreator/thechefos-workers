@@ -1,7 +1,9 @@
 // Locke Harvest Worker — implements LIBRARIAN-SCHEMA.md framework + LOCKE-OUTPUT-SCHEMA.md contract.
-// Trigger: cron "0 0 * * 0" (Sunday midnight UTC) OR POST /run?secret=X for manual fire.
-// MVP scope: Phase 1 (SearXNG) + Phase 3 (Gemini analysis). Phase 2 (Agent-Reach) deferred per C1 audit.
+// Trigger: POST /run?secret=X for manual fire (cron deferred — see wrangler.toml comment).
+// MVP scope: Phase 1 (SearXNG) + Phase 3 (NIM Nemotron-120B analysis). Phase 2 (Agent-Reach) deferred per C1 audit.
 // MVP dedup: in-memory only (per-invocation Set<string>). KV-backed cross-invocation dedup is post-MVP.
+// Analysis tier: NVIDIA NIM Nemotron-120B via OpenAI-compatible chat-completions (was Gemini Flash;
+// swapped 2026-05-07 to reuse Tyler's existing NIM access — vendor-independence + cost discipline).
 
 interface Env {
   PERSONA: string;
@@ -9,13 +11,14 @@ interface Env {
   SEARXNG_URL: string;
   INTEL_LOG_URL: string;
   BRAIN_WRITE_URL: string;
-  GEMINI_MODEL: string;
+  NIM_URL: string;
+  NIM_MODEL: string;
   SCHEMA_VERSION: string;
   MAX_LEADS_PER_RUN: string;
   WALL_CLOCK_BUDGET_MS: string;
-  GEMINI_BUDGET: string;
+  NIM_BUDGET: string;
   // Secrets (set via `wrangler secret put`):
-  GEMINI_API_KEY: string;
+  NIM_API_KEY: string;
   BRAIN_WRITE_SECRET: string;
   HARVEST_RUN_SECRET: string;
 }
@@ -44,7 +47,7 @@ Rules:
 - Be brutally honest about signal strength. One person complaining is not a market
 - Flag Long Con patterns: same pain across different communities
 
-Return ONLY a JSON array of leads. No prose. No markdown fences. No commentary.`;
+Return ONLY a JSON array of leads. No prose. No markdown fences. No commentary. No <think> blocks in your final output.`;
 
 function buildUserPrompt(results: Array<{ url: string; title: string; snippet: string }>): string {
   return `Analyze these search results for product demand signals.
@@ -99,20 +102,30 @@ async function searxngSearch(query: string, env: Env): Promise<Array<{ url: stri
   return (data.results || []).slice(0, 10);
 }
 
-async function callGemini(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
-  const r = await fetch(url, {
+async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
+  const r = await fetch(env.NIM_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Authorization': `Bearer ${env.NIM_API_KEY}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
+      model: env.NIM_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      // Nemotron reasoning consumes a meaningful share of output tokens; 8192 keeps
+      // headroom for the final JSON array after the model's internal thinking.
+      max_tokens: 8192,
+      stream: false
     })
   });
-  if (!r.ok) throw new Error(`Gemini ${r.status}: ${await r.text()}`);
+  if (!r.ok) throw new Error(`NIM ${r.status}: ${await r.text()}`);
   const data: any = await r.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  return data.choices?.[0]?.message?.content ?? '';
 }
 
 function isValidLead(lead: any): { ok: boolean; reason?: string } {
@@ -143,18 +156,31 @@ async function writeBrain(path: string, content: string, message: string, env: E
   if (!r.ok) throw new Error(`brain-write ${r.status}: ${await r.text()}`);
 }
 
+// Strip Nemotron-style <think>...</think> reasoning blocks, then markdown fences,
+// then locate the JSON array boundaries. Defensive against preambles, postambles,
+// and reasoning bleed-through that none of the prompt rules can fully prevent.
+function extractJsonArray(text: string): any[] {
+  const noThink = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const noFence = noThink.replace(/^```(?:json)?\s*/m, '').replace(/```\s*$/m, '').trim();
+  const start = noFence.indexOf('[');
+  const end = noFence.lastIndexOf(']');
+  const slice = (start >= 0 && end > start) ? noFence.slice(start, end + 1) : noFence;
+  const parsed = JSON.parse(slice);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
 async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: number; discarded: number; status: string; session_id: string }> {
   const sessionId = crypto.randomUUID();
   const startedAt = Date.now();
   const wallClockBudget = parseInt(env.WALL_CLOCK_BUDGET_MS, 10);
   const maxLeads = parseInt(env.MAX_LEADS_PER_RUN, 10);
-  const geminiBudget = parseInt(env.GEMINI_BUDGET, 10);
+  const nimBudget = parseInt(env.NIM_BUDGET, 10);
 
   await logIntel(env, { event: 'harvest_start', session_id: sessionId, trigger });
 
   const seenUrls = new Set<string>();
   const candidates: Array<{ url: string; title: string; snippet: string }> = [];
-  let geminiCalls = 0;
+  let nimCalls = 0;
 
   // Phase 1 — SearXNG meta-search
   for (const q of HUNT_QUERIES) {
@@ -180,18 +206,16 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     return { kept: 0, discarded: 0, status: 'no_signal', session_id: sessionId };
   }
 
-  // Phase 3 — Gemini analysis (Phase 2 Agent-Reach deferred; we send title+snippet only)
+  // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only)
   let leads: any[] = [];
   try {
-    if (geminiCalls >= geminiBudget) throw new Error('gemini_budget_exhausted');
+    if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
     const userPrompt = buildUserPrompt(candidates.slice(0, 25));
-    const text = await callGemini(SYSTEM_PROMPT, userPrompt, env);
-    geminiCalls++;
-    const cleaned = text.replace(/^```(?:json)?\s*/m, '').replace(/```\s*$/m, '').trim();
-    const parsed = JSON.parse(cleaned);
-    leads = Array.isArray(parsed) ? parsed : [];
+    const text = await callNim(SYSTEM_PROMPT, userPrompt, env);
+    nimCalls++;
+    leads = extractJsonArray(text);
   } catch (e: any) {
-    await logIntel(env, { event: 'gemini_failed', session_id: sessionId, error: String(e?.message ?? e) });
+    await logIntel(env, { event: 'nim_failed', session_id: sessionId, error: String(e?.message ?? e) });
     leads = [];
   }
 
@@ -238,7 +262,7 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     ended_at: new Date().toISOString(),
     wall_clock_ms: Date.now() - startedAt,
     candidates_scanned: candidates.length,
-    gemini_calls: geminiCalls,
+    nim_calls: nimCalls,
     leads_kept: kept,
     leads_discarded: discarded,
     status: kept > 0 ? 'complete' : (leads.length > 0 ? 'all_discarded' : 'no_leads')
@@ -261,7 +285,7 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health') {
-      return Response.json({ ok: true, persona: env.PERSONA, schema: env.SCHEMA_VERSION });
+      return Response.json({ ok: true, persona: env.PERSONA, schema: env.SCHEMA_VERSION, model: env.NIM_MODEL });
     }
     if (url.pathname === '/run' && request.method === 'POST') {
       const secret = url.searchParams.get('secret') ?? request.headers.get('x-harvest-secret');
