@@ -1,9 +1,9 @@
-# C4 COMPLETE — Locke smoke (partial-real)
+# C4 COMPLETE — Locke smoke (partial-real, NIM-tier)
 
-**Date:** 2026-05-07T04:14Z
+**Date:** 2026-05-07T04:14Z (initial); 2026-05-07T05:35Z (NIM swap landed)
 **Substrate:** Authored from Chat-Opus (not via auto-exec.sh) — C4 was MAP-tagged `[NARROW]` but spec ran into prereq gaps that needed multi-step recovery; staying in Chat is faster than re-firing /build with a new PROMPT.
 **Hunt:** forge-and-library
-**Status:** **partial-real** — pass condition met via stub; real harvest blocked on Gemini + SearXNG provisioning
+**Status:** **partial-real** — pass condition met via stub; real harvest blocked on SearXNG provisioning (NIM key + secrets are the lighter blocker)
 
 ---
 
@@ -38,17 +38,26 @@ Stubbed lead written to `brain/05-leads/_drafts/c4-smoke-stub-2026-05-07.json` (
 
 This satisfies the MAP pass condition "≥1 Lead JSON in brain/05-leads/ matching schema from C2".
 
+### 3. Analysis tier swapped Gemini → NIM Nemotron-120B (post-deploy)
+
+After landing the stub, Tyler challenged the Gemini dependency: "Why do I need the Gemini key when I have the Nvidia?" Right call — Tyler already pays nothing for NIM Nemotron-120B (used by hunter-exec.py, claude-exec.sh, OpenClaw fleet), and Nemotron-120B is materially more capable than Gemini Flash for structured-output tasks. Gemini was dead weight.
+
+**Five-file swap (~7 minutes Chat-side):**
+- `a1aba3e7` — `packages/locke-harvest/wrangler.toml`: dropped `GEMINI_MODEL`/`GEMINI_BUDGET`, added `NIM_URL=https://integrate.api.nvidia.com/v1/chat/completions`, `NIM_MODEL=nvidia/nemotron-3-super-120b-a12b`, `NIM_BUDGET=50`
+- `0987b1d0` — `packages/locke-harvest/src/index.ts`: replaced `callGemini()` with `callNim()` (OpenAI-compat chat-completions); added `<think>...</think>` strip in JSON extraction (Nemotron emits reasoning blocks); bumped `max_tokens` 4096 → 8192 (reasoning headroom); renamed `geminiCalls`/`geminiBudget` → `nimCalls`/`nimBudget`; renamed intel events `gemini_*` → `nim_*`; `/health` now also returns `model`
+- `24e4d5ae` — `.github/workflows/deploy.yml`: secret-set step renamed `LOCKE_GEMINI_API_KEY` → `LOCKE_NIM_API_KEY`, target Worker secret renamed `GEMINI_API_KEY` → `NIM_API_KEY`
+- `578ae805` — `LIBRARIAN-SCHEMA.md` v1.1: §2/§4/§6/§9/§10/§12 updated; cost ceiling now reflects $0 reality; added Nemotron `<think>` failure mode
+- This file (C4 COMPLETE.md) — followup task list rewritten
+
+**Note on staged/ files:** `hunts/forge-and-library/clue-3/staged/wrangler.toml` and `staged/index.ts` are now **divergent** from live `packages/locke-harvest/`. Staged copies are sealed historical record of the C3 PROMPT v2 first-build pattern; live files reflect the NIM swap. This is intentional — staged/ is "what shipped to the Hunter at C3 time," not the maintained source of truth. Future PROMPT v2-style re-fires of clue-3 are unlikely; if needed, regenerate staged/ from live first.
+
 ---
 
 ## What's blocked (real harvest smoke is C4-followup)
 
-The Worker can't fire a real harvest until these three are provisioned. Each is a single Tyler-side action:
+### 3a. NIM API key into GHA secrets (lightest)
 
-### 3a. Gemini API key
-
-Provision: free at [ai.google.dev](https://ai.google.dev) — no credit card required, 1,000 req/day on Flash.
-Set: GitHub Actions secret `LOCKE_GEMINI_API_KEY` on `AetherCreator/thechefos-workers`.
-Next deploy.yml run picks it up via the secret-set step we already added.
+Tyler already has the value at `/opt/secrets/nvidia-api-key` on InfiniVeg. Action: copy that value into a new GitHub Actions secret named `LOCKE_NIM_API_KEY` on `AetherCreator/thechefos-workers`. Next deploy.yml run picks it up via the secret-set step.
 
 ### 3b. Brain-write secret
 
@@ -61,7 +70,7 @@ Generate any 32-char random string (e.g. `openssl rand -hex 16`).
 Set: GitHub Actions secret `LOCKE_HARVEST_RUN_SECRET` = the value.
 Also save locally to `/opt/secrets/locke-harvest-run-key` for the smoke curl.
 
-### 3d. SearXNG decision (separate architectural choice)
+### 3d. SearXNG decision (separate architectural choice — biggest blocker)
 
 `wrangler.toml` currently points `SEARXNG_URL` at `https://searxng-tunnel.thechefos.app/search`. That tunnel does not yet exist (DNS does not resolve). Three options, ranked by effort:
 
@@ -89,7 +98,7 @@ If `status: complete` with `kept >= 1` — C4 fully passes; archive the stub and
 
 ## Followup tasks (not blocking C5 design but blocking C5 validation)
 
-- [ ] **Tyler:** add `LOCKE_GEMINI_API_KEY` to GHA secrets
+- [ ] **Tyler:** add `LOCKE_NIM_API_KEY` to GHA secrets (value from `/opt/secrets/nvidia-api-key`)
 - [ ] **Tyler:** add `LOCKE_BRAIN_WRITE_SECRET` (= `SuperDuperClaude`) to GHA secrets
 - [ ] **Tyler:** add `LOCKE_HARVEST_RUN_SECRET` (random 32-char) to GHA secrets + save to `/opt/secrets/locke-harvest-run-key`
 - [ ] **Tyler:** SearXNG decision (recommend option 2 — self-host + tunnel)
@@ -104,17 +113,21 @@ If `status: complete` with `kept >= 1` — C4 fully passes; archive the stub and
 
 1. **Verify-deployed-job pattern** — when CI is "green" on a multi-package repo, "green" only means the existing jobs ran clean. Always check that the *specific* package you wanted got a job. Pre-flight grep: `grep "deploy-<package>" .github/workflows/*.yml` before assuming CI deploys it.
 2. **Cloudflare cron strictness** — `0 0 * * 0` is rejected. Use named days (`SUN`, `MON`...) when targeting a single weekday. Default to omitting `[triggers]` until ready and using `/run` webhook for manual/test fires.
-3. **fails-soft secret-set step** — `|| true` on each `wrangler secret put` keeps deploys green while secrets are being provisioned. Better than blocking deploy on secret availability.
+3. **Fails-soft secret-set step** — `|| true` on each `wrangler secret put` keeps deploys green while secrets are being provisioned. Better than blocking deploy on secret availability.
+4. **Substrate-honesty principle (NIM swap)** — when a spec spawns a new vendor relationship, ask whether existing stack already covers it. The Gemini choice was inherited from the legacy MAP "free tier without credit card" reasoning, but Tyler's NIM access already covered the same need. Vendor independence is a Bible 1.1 principle, not just an aesthetic.
+5. **Reasoning-block bleed-through** — Nemotron-class models emit `<think>...</think>` reasoning before final answer. Strip these before JSON parse + bump `max_tokens` to give reasoning headroom. Same pattern likely applies to other reasoning-tier endpoints (DeepSeek-R1, etc.) if Tyler swaps NIM later.
 
-These three patterns belong in `brain/02-knowledge/` after this session closes.
+These belong in `brain/02-knowledge/` after this session closes.
 
 ---
 
 ## Source SHAs
 
-- deploy.yml patch: `cf72198d` (locke-harvest job added) → `3bd6bedb` (cron fix)
+- deploy.yml: `cf72198d` (locke-harvest job added) → `3bd6bedb` (cron fix) → `24e4d5ae` (NIM secret rename)
+- wrangler.toml: `3bd6bedb` (cron drop) → `a1aba3e7` (NIM swap)
+- src/index.ts: `c614bab0` (Gemini original) → `0987b1d0` (NIM swap with `<think>` strip)
+- LIBRARIAN-SCHEMA: `c47b83c7` (v1.0) → `578ae805` (v1.1)
 - Worker hostname: `locke-harvest.tveg-baking.workers.dev`
 - Stub lead: `brain/05-leads/_drafts/c4-smoke-stub-2026-05-07.json` on SuperClaude main
-- Locke Harvest CI job (final green): `74748656395`
 
-`HUNT_PARTIAL_COMPLETE: forge-and-library/clue-4 stub-pass+worker-live; real-harvest blocked on Gemini+SearXNG`
+`HUNT_PARTIAL_COMPLETE: forge-and-library/clue-4 stub-pass+worker-live+NIM-tier; real-harvest blocked on SearXNG`
