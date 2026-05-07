@@ -1,0 +1,16 @@
+{
+  "name": "council",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Designer Council Worker — 3-judge deliberation on Locke leads (COUNCIL-SCHEMA v1.0)",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy --keep-vars",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240502.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.85.0"
+  }
+}
