@@ -24,9 +24,12 @@ BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 # Analysis tier: NIM Nemotron-120B via OpenAI-compatible chat-completions (was Gemini Flash;
 # swapped 2026-05-07 to reuse Tyler's existing NIM access — vendor-independence + cost discipline)
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NIM_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+NIM_MODEL = "@cf/moonshotai/kimi-k2.6"
 SCHEMA_VERSION = "locke-1.0"
 MAX_LEADS_PER_RUN = "5"
 WALL_CLOCK_BUDGET_MS = "480000"
 NIM_BUDGET = "50"
 PER_QUERY_SLEEP_MS = "2000"
+
+[ai]
+binding = "AI"

@@ -6,6 +6,7 @@
 // swapped 2026-05-07 to reuse Tyler's existing NIM access — vendor-independence + cost discipline).
 
 interface Env {
+  AI: any;  // Workers AI binding (Kimi K2.6 in-network)
   PERSONA: string;
   BRAIN_PATH: string;
   SEARXNG_URL: string;
@@ -115,31 +116,21 @@ async function searxngSearch(query: string, env: Env): Promise<Array<{ url: stri
 }
 
 async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
-  // Streaming SSE keeps the Cloudflare Workers fetch subrequest alive past the
-  // ~110s abort threshold that bit non-streaming Locke smokes 2026-05-07.
-  // Bytes flowing = connection healthy; Nemotron reasoning chunks count.
-  const r = await fetch(env.NIM_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.NIM_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream'
-    },
-    body: JSON.stringify({
-      model: env.NIM_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 4096,
-      stream: true
-    })
+  // Workers AI binding (in-network) — bypasses NVIDIA NIM edge 524 timeout
+  // observed on smokes 2-5 (2026-05-07). Kimi K2.6 frontier-scale, agentic-optimized.
+  // Streaming preserves connection liveness; SSE chunks flow as Kimi generates.
+  const stream: ReadableStream<Uint8Array> = await env.AI.run(env.NIM_MODEL, {
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    temperature: 0.3,
+    max_tokens: 4096,
+    stream: true
   });
-  if (!r.ok) throw new Error(`NIM ${r.status}: ${await r.text()}`);
-  if (!r.body) throw new Error('NIM stream: no body');
+  if (!stream) throw new Error('AI binding: no stream returned');
 
-  const reader = r.body.getReader();
+  const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let content = '';
@@ -157,7 +148,8 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
       if (payload === '[DONE]') return content;
       try {
         const chunk: any = JSON.parse(payload);
-        const delta = chunk?.choices?.[0]?.delta?.content;
+        // Handle both chunk shapes: Workers AI native ({response}) and OpenAI-compat ({choices})
+        const delta = chunk?.response ?? chunk?.choices?.[0]?.delta?.content;
         if (typeof delta === 'string') content += delta;
       } catch (_) {
         // Malformed SSE chunk - skip and keep streaming
