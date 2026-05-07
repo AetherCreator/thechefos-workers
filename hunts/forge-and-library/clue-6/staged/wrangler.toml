@@ -1,0 +1,26 @@
+name = "council"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "cc231edbff18405233612d7afb657f1f"
+
+# [triggers] block intentionally omitted for MVP — restore as
+# crons = ["*/15 * * * *"] once smoke is green. Use named-day form for
+# weekly crons per the cf-cron-strictness pattern (avoid "0 0 * * 0").
+
+[vars]
+PERSONA = "council"
+COUNCIL_SCHEMA_VERSION = "council-1.0"
+SUPPORTED_LEAD_VERSIONS = "[\"locke-1.0\"]"
+CONFIDENCE_FILTER = "[\"medium\",\"high\",\"dead_certain\"]"
+PATTERN_TYPE_FILTER = "[\"repeated\",\"long_con\"]"
+THRESHOLD = "95.0"
+NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+NIM_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+BRAIN_RAW_BASE = "https://raw.githubusercontent.com/AetherCreator/SuperClaude/main"
+BRAIN_GH_API_BASE = "https://api.github.com/repos/AetherCreator/SuperClaude/contents"
+BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
+INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
+WALL_CLOCK_BUDGET_MS = "30000"
+PER_JUDGE_TIMEOUT_MS = "20000"
+TYLER_CHAT_ID = "6091970994"
