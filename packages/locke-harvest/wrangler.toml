@@ -13,7 +13,7 @@ account_id = "cc231edbff18405233612d7afb657f1f"
 [vars]
 PERSONA = "locke-lamora"
 BRAIN_PATH = "brain/05-leads"
-SEARXNG_URL = "https://searxng-tunnel.thechefos.app/search"
+SEARXNG_URL = "https://searxng.thechefos.app/search"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 # Analysis tier: NIM Nemotron-120B via OpenAI-compatible chat-completions (was Gemini Flash;
