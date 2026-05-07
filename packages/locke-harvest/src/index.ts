@@ -125,7 +125,7 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
       { role: 'user', content: userPrompt }
     ],
     temperature: 0.3,
-    max_tokens: 4096
+    max_tokens: 16384
   });
   // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] } OpenAI-compat
   // Capture both + a raw-keys fallback for unanticipated shapes.
