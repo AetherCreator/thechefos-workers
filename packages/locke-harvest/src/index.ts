@@ -115,12 +115,15 @@ async function searxngSearch(query: string, env: Env): Promise<Array<{ url: stri
 }
 
 async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
+  // Streaming SSE keeps the Cloudflare Workers fetch subrequest alive past the
+  // ~110s abort threshold that bit non-streaming Locke smokes 2026-05-07.
+  // Bytes flowing = connection healthy; Nemotron reasoning chunks count.
   const r = await fetch(env.NIM_URL, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${env.NIM_API_KEY}`,
       'Content-Type': 'application/json',
-      'Accept': 'application/json'
+      'Accept': 'text/event-stream'
     },
     body: JSON.stringify({
       model: env.NIM_MODEL,
@@ -129,15 +132,39 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      // Nemotron reasoning consumes a meaningful share of output tokens; 8192 keeps
-      // headroom for the final JSON array after the model's internal thinking.
       max_tokens: 4096,
-      stream: false
+      stream: true
     })
   });
   if (!r.ok) throw new Error(`NIM ${r.status}: ${await r.text()}`);
-  const data: any = await r.json();
-  return data.choices?.[0]?.message?.content ?? '';
+  if (!r.body) throw new Error('NIM stream: no body');
+
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (payload === '[DONE]') return content;
+      try {
+        const chunk: any = JSON.parse(payload);
+        const delta = chunk?.choices?.[0]?.delta?.content;
+        if (typeof delta === 'string') content += delta;
+      } catch (_) {
+        // Malformed SSE chunk - skip and keep streaming
+      }
+    }
+  }
+  return content;
 }
 
 function isValidLead(lead: any): { ok: boolean; reason?: string } {
@@ -237,7 +264,18 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     nimCalls++;
     leads = extractJsonArray(text);
   } catch (e: any) {
-    await logIntel(env, { event: 'nim_failed', session_id: sessionId, error: String(e?.message ?? e) });
+    const errMsg = String(e?.message ?? e);
+    const errStack = String(e?.stack ?? '');
+    await logIntel(env, { event: 'nim_failed', session_id: sessionId, error: errMsg });
+    // Diagnostic backup: intel/log isn't reaching us cleanly; persist the error to brain.
+    try {
+      await writeBrain(
+        `${env.BRAIN_PATH}/_drafts/nim-error-${sessionId}.json`,
+        JSON.stringify({ session_id: sessionId, error: errMsg, stack: errStack.slice(0, 2000), timestamp: new Date().toISOString() }, null, 2),
+        `locke-harvest debug: nim error ${sessionId}`,
+        env
+      );
+    } catch (_) { /* best-effort */ }
     leads = [];
   }
 
