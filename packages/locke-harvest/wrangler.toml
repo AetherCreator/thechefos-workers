@@ -18,7 +18,7 @@ SEARXNG_URL = "https://searxng.thechefos.app/search"
 # burst load. Tested 2026-05-07: brave is the only reliable free engine; DDG,
 # Qwant, Karmasearch, Startpage all return CAPTCHA / 403 / HTTP 400 to SearXNG
 # when fired in 10-query bursts. Tunable comma-list when others stabilize.
-SEARXNG_ENGINES = "brave"
+SEARXNG_ENGINES = "brave,google"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 # Analysis tier: NIM Nemotron-120B via OpenAI-compatible chat-completions (was Gemini Flash;
