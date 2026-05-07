@@ -229,3 +229,42 @@ jobs:
           NIM: ${{ secrets.LOCKE_NIM_API_KEY }}
           BRAIN_WRITE: ${{ secrets.LOCKE_BRAIN_WRITE_SECRET }}
           RUN_SECRET: ${{ secrets.LOCKE_HARVEST_RUN_SECRET }}
+
+  deploy-council:
+    name: Deploy Council
+    runs-on: ubuntu-latest
+    # Skip cleanly until Hunter (C6 fire) cps staged files into packages/council/.
+    # `hashFiles` returns empty string when no files match, so this `if` evaluates
+    # false until packages/council/wrangler.toml exists.
+    if: ${{ hashFiles('packages/council/wrangler.toml') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Deploy
+        working-directory: packages/council
+        run: |
+          npm install --legacy-peer-deps
+          npx wrangler deploy --keep-vars
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      - name: Set Worker secrets
+        # Same fails-soft pattern as deploy-locke-harvest. Tyler-side prerequisites:
+        # add COUNCIL_NIM_API_KEY (same value as LOCKE_NIM_API_KEY — the NIM key from
+        # /opt/secrets/nvidia-api-key), COUNCIL_BRAIN_WRITE_SECRET (= "SuperDuperClaude"),
+        # COUNCIL_RUN_SECRET (random 32-char), and optionally COUNCIL_TELEGRAM_TOKEN.
+        working-directory: packages/council
+        run: |
+          printf '%s' "$NIM"             | npx wrangler secret put NIM_API_KEY              || true
+          printf '%s' "$BRAIN_WRITE"     | npx wrangler secret put BRAIN_WRITE_SECRET       || true
+          printf '%s' "$RUN_SECRET"      | npx wrangler secret put COUNCIL_RUN_SECRET       || true
+          printf '%s' "$TELEGRAM_TOKEN"  | npx wrangler secret put COUNCIL_TELEGRAM_TOKEN   || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          NIM: ${{ secrets.COUNCIL_NIM_API_KEY }}
+          BRAIN_WRITE: ${{ secrets.COUNCIL_BRAIN_WRITE_SECRET }}
+          RUN_SECRET: ${{ secrets.COUNCIL_RUN_SECRET }}
+          TELEGRAM_TOKEN: ${{ secrets.COUNCIL_TELEGRAM_TOKEN }}
