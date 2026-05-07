@@ -31,6 +31,7 @@ interface Env {
   NIM_API_KEY: string;
   BRAIN_WRITE_SECRET: string;
   COUNCIL_RUN_SECRET: string;
+  GITHUB_TOKEN: string;              // PAT with `repo` scope — required to read private brain
   COUNCIL_TELEGRAM_TOKEN?: string;   // optional — skip Telegram if absent
 }
 
@@ -151,6 +152,18 @@ Your job is to find reasons it fails. If you can't find strong reasons, score it
 // HELPERS
 // =============================================================================
 
+// Common headers for all reads against the (private) AetherCreator/SuperClaude repo.
+// raw.githubusercontent.com accepts `Authorization: Bearer <PAT>` for private repos
+// with the same PAT scopes as api.github.com (we need `repo` for full read).
+function ghReadHeaders(env: Env, accept?: string): Record<string, string> {
+  const h: Record<string, string> = {
+    'User-Agent': 'council-worker/1.0',
+    'Authorization': `Bearer ${env.GITHUB_TOKEN}`
+  };
+  if (accept) h['Accept'] = accept;
+  return h;
+}
+
 async function logIntel(env: Env, event: Record<string, any>): Promise<void> {
   try {
     await fetch(env.INTEL_LOG_URL, {
@@ -257,14 +270,15 @@ async function callJudge(
 }
 
 // =============================================================================
-// LEAD I/O — public-repo reads via raw.githubusercontent.com (no auth, rate-limited
-// only at GitHub's edge). Lead writes go through brain-write Worker; Council never
+// LEAD I/O — authenticated reads against the PRIVATE AetherCreator/SuperClaude
+// repo. raw.githubusercontent.com accepts Bearer auth with the same PAT scopes
+// as api.github.com. Lead writes go through brain-write Worker; Council never
 // mutates leads, only writes verdict sidecars.
 // =============================================================================
 
 async function readLead(leadPath: string, env: Env): Promise<any> {
   const r = await fetch(`${env.BRAIN_RAW_BASE}/${leadPath}`, {
-    headers: { 'User-Agent': 'council-worker/1.0' }
+    headers: ghReadHeaders(env)
   });
   if (!r.ok) throw new Error(`lead_read ${r.status} for ${leadPath}`);
   return await r.json();
@@ -282,7 +296,7 @@ async function findLeadPath(leadId: string, env: Env): Promise<string | null> {
     try {
       const r = await fetch(`${env.BRAIN_RAW_BASE}/${p}`, {
         method: 'HEAD',
-        headers: { 'User-Agent': 'council-worker/1.0' }
+        headers: ghReadHeaders(env)
       });
       if (r.ok) return p;
     } catch { /* try next */ }
@@ -295,7 +309,7 @@ async function verdictExists(leadPath: string, env: Env): Promise<boolean> {
   try {
     const r = await fetch(`${env.BRAIN_RAW_BASE}/${verdictPath}`, {
       method: 'HEAD',
-      headers: { 'User-Agent': 'council-worker/1.0' }
+      headers: ghReadHeaders(env)
     });
     return r.ok;
   } catch {
@@ -506,7 +520,7 @@ async function runSweep(env: Env): Promise<any> {
   const apiUrl = `${env.BRAIN_GH_API_BASE}/brain/05-leads/${today}`;
   let files: any[] = [];
   try {
-    const r = await fetch(apiUrl, { headers: { 'User-Agent': 'council-worker/1.0', 'Accept': 'application/vnd.github.v3+json' } });
+    const r = await fetch(apiUrl, { headers: ghReadHeaders(env, 'application/vnd.github.v3+json') });
     if (r.status === 404) {
       await logIntel(env, { event: 'sweep_no_leads_today', session_id: sessionId });
       return { processed: 0, approved: 0, killed: 0, abstained: 0, unprocessable: 0, skipped: 0, errors: [], wall_clock_ms: Date.now() - startedAt };
