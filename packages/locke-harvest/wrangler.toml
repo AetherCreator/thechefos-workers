@@ -4,8 +4,11 @@ compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "cc231edbff18405233612d7afb657f1f"
 
-[triggers]
-crons = ["0 0 * * 0"]
+# [triggers] block intentionally omitted for MVP — Cloudflare's cron parser rejected
+# "0 0 * * 0" with code 10100 ("invalid cron string") on first deploy. Worker uploads
+# fine; only schedules registration failed. Add back once SearXNG is wired and we're
+# ready for autonomous fires; until then, manual POST /run is the trigger surface.
+# When restoring, prefer named-day form: crons = ["0 0 * * SUN"]
 
 [vars]
 PERSONA = "locke-lamora"
