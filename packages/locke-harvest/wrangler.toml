@@ -14,6 +14,11 @@ account_id = "cc231edbff18405233612d7afb657f1f"
 PERSONA = "locke-lamora"
 BRAIN_PATH = "brain/05-leads"
 SEARXNG_URL = "https://searxng.thechefos.app/search"
+# Pin to engines that don't bot-block our `site:reddit.com`-style queries under
+# burst load. Tested 2026-05-07: brave is the only reliable free engine; DDG,
+# Qwant, Karmasearch, Startpage all return CAPTCHA / 403 / HTTP 400 to SearXNG
+# when fired in 10-query bursts. Tunable comma-list when others stabilize.
+SEARXNG_ENGINES = "brave"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 # Analysis tier: NIM Nemotron-120B via OpenAI-compatible chat-completions (was Gemini Flash;
