@@ -5,8 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "cc231edbff18405233612d7afb657f1f"
 
 # [triggers] block intentionally omitted for MVP — restore as
-# crons = ["*/15 * * * *"] once smoke is green. Use named-day form for
-# weekly crons per the cf-cron-strictness pattern (avoid "0 0 * * 0").
+# crons = ["0 1 * * SUN"] (1h after Locke's weekly fire) once Kimi smoke is green.
+# Use named-day form per the cf-cron-strictness pattern (avoid "0 0 * * 0").
 
 [vars]
 PERSONA = "council"
@@ -15,14 +15,24 @@ SUPPORTED_LEAD_VERSIONS = "[\"locke-1.0\"]"
 CONFIDENCE_FILTER = "[\"medium\",\"high\",\"dead_certain\"]"
 PATTERN_TYPE_FILTER = "[\"repeated\",\"long_con\"]"
 THRESHOLD = "95.0"
+# NIM_URL retained as legacy var (no longer read by code post Kimi pivot 2026-05-07);
+# kept in env to ease revert if Kimi K2.6 underperforms on judge prompts.
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NIM_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+# Model: Workers AI Kimi K2.6 (in-network, sync) — pivoted 2026-05-07 from
+# nvidia/nemotron-3-super-120b-a12b. Locke's session-9 smoke validated Kimi K2.6
+# on multi-lead reasoning + JSON output; same envelope works for judge prompts.
+# Vendor independence + escape from NVIDIA edge 524 ceiling at ~145s.
+NIM_MODEL = "@cf/moonshotai/kimi-k2.6"
 BRAIN_RAW_BASE = "https://raw.githubusercontent.com/AetherCreator/SuperClaude/main"
 BRAIN_GH_API_BASE = "https://api.github.com/repos/AetherCreator/SuperClaude/contents"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
 WALL_CLOCK_BUDGET_MS = "90000"
-# Bumped 20000 -> 30000 after c4-smoke-stub fire 1 saw skeptic time out at exactly
-# 20s. Nemotron-120B reasoning + JSON output can take 25-28s under NIM load.
+# Per-judge timeout 60s — was needed for NIM Nemotron edge latency. Kimi K2.6
+# in-network should be faster but reasoning_content can still chew time. 60s
+# gives safe headroom; tune down to 30-45s after smoke calibration if reliable.
 PER_JUDGE_TIMEOUT_MS = "60000"
 TYLER_CHAT_ID = "6091970994"
+
+[ai]
+binding = "AI"
