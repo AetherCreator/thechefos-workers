@@ -4,12 +4,10 @@ compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "cc231edbff18405233612d7afb657f1f"
 
-# Cron restored 2026-05-07 evening (A3 of NEXT-SESSION fork). 1h after Locke's
-# weekly fire so any new leads get deliberated same cycle. Sunday 01:00 UTC =
-# Saturday 6pm PT. Use named-day form per cf-cron-strictness pattern (numeric
-# "0 1 * * 0" was rejected with code 10100 on first deploy attempt).
-[triggers]
-crons = ["0 1 * * SUN"]
+# CRON MIGRATED TO N8N (2026-05-07): CF account hit 5/5 cron quota cap (code 10072).
+# Council fires Sun 01:00 UTC via n8n schedule node POSTing /run-manual.
+# Workflow JSON: n8n/council-weekly.json (import via n8n UI, set COUNCIL_RUN_SECRET env).
+# Architectural: avoids vendor cron quota for future swarm Workers (Schemer/Builder v1.1).
 
 [vars]
 PERSONA = "council"
