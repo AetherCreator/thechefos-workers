@@ -990,7 +990,7 @@ export default {
       const now = new Date().toISOString();
       await env.BRAIN_DB.prepare('UPDATE usage_odometer SET weekly_current_pct=0, weekly_reset_at=?, weekly_last_updated=? WHERE id=?').bind(now, now, 'singleton').run();
     }
-    if (event.cron === '0 6 * * *') {
+    if (event.cron === '0 6 * * 7') {
       if (env.GITHUB_TOKEN) {
         await generateAndPushCognitiveCache(env.BRAIN_DB, env.GITHUB_TOKEN);
       }
