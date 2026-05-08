@@ -1,0 +1,15 @@
+{
+  "name": "schemer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Schemer Worker — THDD scaffold generator (FOUNDRY-SCHEMA v1.0)",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy --keep-vars"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240502.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.85.0"
+  }
+}

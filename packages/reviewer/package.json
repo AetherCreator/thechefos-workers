@@ -1,0 +1,15 @@
+{
+  "name": "reviewer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reviewer Worker — 5-gate QA checker (FOUNDRY-SCHEMA v1.0)",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy --keep-vars"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240502.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.85.0"
+  }
+}

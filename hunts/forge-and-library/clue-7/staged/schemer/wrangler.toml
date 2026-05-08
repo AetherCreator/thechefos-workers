@@ -1,0 +1,20 @@
+name = "schemer"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "cc231edbff18405233612d7afb657f1f"
+
+[vars]
+PERSONA = "schemer"
+FOUNDRY_SCHEMA_VERSION = "foundry-1.0"
+NIM_MODEL = "@cf/moonshotai/kimi-k2.6"
+BRAIN_RAW_BASE = "https://raw.githubusercontent.com/AetherCreator/SuperClaude/main"
+BRAIN_GH_API_BASE = "https://api.github.com/repos/AetherCreator/SuperClaude/contents"
+BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
+INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
+MAX_RETRIES = "2"
+WALL_CLOCK_BUDGET_MS = "120000"
+TYLER_CHAT_ID = "6091970994"
+
+[ai]
+binding = "AI"

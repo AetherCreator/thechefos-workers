@@ -1,0 +1,14 @@
+name = "builder"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "cc231edbff18405233612d7afb657f1f"
+
+[vars]
+PERSONA = "builder"
+FOUNDRY_SCHEMA_VERSION = "foundry-1.0"
+BRAIN_RAW_BASE = "https://raw.githubusercontent.com/AetherCreator/SuperClaude/main"
+BRAIN_GH_API_BASE = "https://api.github.com/repos/AetherCreator/SuperClaude/contents"
+BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
+INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
+TYLER_CHAT_ID = "6091970994"
