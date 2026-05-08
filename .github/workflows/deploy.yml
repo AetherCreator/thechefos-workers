@@ -404,11 +404,9 @@ jobs:
           printf %s "$BRAIN_WRITE"  | npx wrangler secret put BRAIN_WRITE_SECRET  || true
           printf %s "$RUN_SECRET"   | npx wrangler secret put REVIEWER_RUN_SECRET || true
           printf %s "$GH_TOK"       | npx wrangler secret put GITHUB_TOKEN        || true
-          printf %s "$ANTHROPIC"    | npx wrangler secret put ANTHROPIC_API_KEY   || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           BRAIN_WRITE: ${{ secrets.REVIEWER_BRAIN_WRITE_SECRET }}
           RUN_SECRET: ${{ secrets.REVIEWER_RUN_SECRET }}
           GH_TOK: ${{ secrets.GH_TOKEN }}
-          ANTHROPIC: ${{ secrets.REVIEWER_ANTHROPIC_API_KEY }}

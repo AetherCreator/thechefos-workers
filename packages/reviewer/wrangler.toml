@@ -7,9 +7,16 @@ account_id = "cc231edbff18405233612d7afb657f1f"
 [vars]
 PERSONA = "reviewer"
 FOUNDRY_SCHEMA_VERSION = "foundry-1.0"
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
+# Pivoted 2026-05-07 from claude-haiku-4-5-20251001 (Anthropic API) to Workers
+# AI Kimi K2.6 in-network. Spirit Test (FOUNDRY-SCHEMA §11): zero Anthropic API
+# surfaces in autonomous swarm. Mirrors Locke + Council + Schemer pattern.
+NIM_MODEL = "@cf/moonshotai/kimi-k2.6"
 BRAIN_RAW_BASE = "https://raw.githubusercontent.com/AetherCreator/SuperClaude/main"
 BRAIN_GH_API_BASE = "https://api.github.com/repos/AetherCreator/SuperClaude/contents"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
+PER_GATE_TIMEOUT_MS = "30000"
 TYLER_CHAT_ID = "6091970994"
+
+[ai]
+binding = "AI"
