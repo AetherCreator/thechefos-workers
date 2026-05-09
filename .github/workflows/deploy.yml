@@ -455,3 +455,53 @@ jobs:
           BRAIN_WRITE: ${{ secrets.LOCKE_BRAIN_WRITE_SECRET }}
           RUN_SECRET: ${{ secrets.TELEMETRY_RUN_SECRET }}
           GH_TOK: ${{ secrets.GH_TOKEN }}
+
+  deploy-mapmaker:
+    name: Deploy Mapmaker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check if package exists
+        id: check
+        run: |
+          if [ -f packages/mapmaker/wrangler.toml ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "📦 packages/mapmaker/ present — proceeding with deploy"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "📦 packages/mapmaker/ not yet shipped — skipping"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.exists == 'true'
+        with:
+          node-version: '20'
+      - name: Deploy
+        if: steps.check.outputs.exists == 'true'
+        working-directory: packages/mapmaker
+        run: |
+          npm install --legacy-peer-deps
+          npx wrangler deploy --keep-vars
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      - name: Set Worker secrets
+        # Fails-soft pattern matching deploy-locke-harvest / deploy-council.
+        # GHA prerequisites (already provisioned 2026-05-09):
+        #   MAPMAKER_TELEGRAM_TOKEN  — @Aether_MapMaker_bot token
+        #   MAPMAKER_WEBHOOK_SECRET  — random hex for Telegram webhook auth
+        #   FORGE_OPS_CHAT_ID        — THDD group chat_id (-5276079329)
+        # BRAIN_WRITE_SECRET reuses LOCKE_BRAIN_WRITE_SECRET (= "SuperDuperClaude").
+        if: steps.check.outputs.exists == 'true'
+        working-directory: packages/mapmaker
+        run: |
+          printf '%s' "$TELEGRAM_TOKEN"     | npx wrangler secret put TELEGRAM_TOKEN     || true
+          printf '%s' "$WEBHOOK_SECRET"     | npx wrangler secret put WEBHOOK_SECRET     || true
+          printf '%s' "$BRAIN_WRITE"        | npx wrangler secret put BRAIN_WRITE_SECRET || true
+          printf '%s' "$FORGE_OPS_CHAT_ID"  | npx wrangler secret put FORGE_OPS_CHAT_ID  || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          TELEGRAM_TOKEN: ${{ secrets.MAPMAKER_TELEGRAM_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.MAPMAKER_WEBHOOK_SECRET }}
+          BRAIN_WRITE: ${{ secrets.LOCKE_BRAIN_WRITE_SECRET }}
+          FORGE_OPS_CHAT_ID: ${{ secrets.FORGE_OPS_CHAT_ID }}
