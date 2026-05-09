@@ -37,6 +37,7 @@ interface Env {
   COUNCIL_RUN_SECRET: string;
   GITHUB_TOKEN: string;              // PAT with `repo` scope — required to read private brain
   COUNCIL_TELEGRAM_TOKEN?: string;   // optional — skip Telegram if absent
+  CANARY_LIFTED: string;             // "true" lifts the canary gate; default "false" holds approved leads in _canary/
 }
 
 // =============================================================================
@@ -422,8 +423,16 @@ async function deliberate(
     }
   }
 
+  // Foundry canary gate: hold approved verdicts in _canary/ until Tyler manually
+  // lifts the flag via `wrangler secret put CANARY_LIFTED=true`. Approval workflow:
+  // brain/02-knowledge/foundry-canary-protocol.md. Once lifted, approved verdicts
+  // route normally and Schemer can pick them up.
+  const canaryLifted = env.CANARY_LIFTED === 'true';
+  const canaryHeld = verdictType === 'approved' && !canaryLifted;
+
   const verdict = {
     verdict_schema_version: env.COUNCIL_SCHEMA_VERSION,
+    canary_held: canaryHeld,
     lead_id: lead.lead_id,
     lead_schema_version: lead.schema_version,
     lead_path: leadPath,
@@ -440,9 +449,14 @@ async function deliberate(
     wall_clock_ms: Date.now() - startedAt
   };
 
-  // Verdict sidecar path: alongside the lead for approved/killed; _review/ for abstained/unprocessable
+  // Verdict sidecar path:
+  //   - canary held (approved + gate up) → brain/05-leads/_canary/
+  //   - abstained/unprocessable          → brain/05-leads/_review/
+  //   - approved (gate lifted) / killed  → next to the lead
   let verdictPath: string;
-  if (verdictType === 'abstained' || verdictType === 'unprocessable') {
+  if (canaryHeld) {
+    verdictPath = `brain/05-leads/_canary/${lead.lead_id}.verdict.json`;
+  } else if (verdictType === 'abstained' || verdictType === 'unprocessable') {
     verdictPath = `brain/05-leads/_review/${lead.lead_id}.verdict.json`;
   } else {
     verdictPath = leadPath.replace(/\.json$/, '.verdict.json');
@@ -486,6 +500,7 @@ async function deliberate(
 async function notifyTelegram(verdict: any, lead: any, env: Env): Promise<void> {
   if (!env.COUNCIL_TELEGRAM_TOKEN) return;
   const emoji =
+    verdict.canary_held ? '🐤' :
     verdict.verdict === 'approved' ? '✅' :
     verdict.verdict === 'killed' ? '❌' :
     '⚠️';
@@ -495,6 +510,7 @@ async function notifyTelegram(verdict: any, lead: any, env: Env): Promise<void> 
   const economist = verdict.judges.find((j: any) => j.judge === 'economist') || { abstain: true, reason: 'missing' };
   const skeptic = verdict.judges.find((j: any) => j.judge === 'skeptic') || { abstain: true, reason: 'missing' };
   const trailer =
+    verdict.canary_held ? `\n→ 🐤 CANARY HELD — review at brain/05-leads/_canary/${lead.lead_id}.verdict.json` :
     verdict.verdict === 'approved' ? '\n→ Schemer is drafting the THDD scaffold' :
     verdict.verdict === 'killed' && verdict.kill_reasons?.[0] ? `\n→ ${verdict.kill_reasons[0]}` :
     (verdict.verdict === 'abstained' || verdict.verdict === 'unprocessable') ? '\n→ manual review at brain/05-leads/_review/' :
@@ -507,7 +523,7 @@ async function notifyTelegram(verdict: any, lead: any, env: Env): Promise<void> 
     `The Economist: ${fmtJ(economist)}\n` +
     `The Skeptic:   ${fmtJ(skeptic)}\n\n` +
     `Geometric Mean: ${verdict.geometric_mean ?? 'N/A'}\n` +
-    `Verdict: ${verdict.verdict.toUpperCase()} ${emoji}` +
+    `Verdict: ${verdict.verdict.toUpperCase()}${verdict.canary_held ? ' (CANARY)' : ''} ${emoji}` +
     trailer;
   await fetch(`https://api.telegram.org/bot${env.COUNCIL_TELEGRAM_TOKEN}/sendMessage`, {
     method: 'POST',
