@@ -170,8 +170,8 @@ app.post('/api/brain/push', async (c) => {
   if (!body.path || !body.content || !body.message) {
     return c.json({ error: 'Missing required fields: path, content, message' }, 400)
   }
-  if (!body.path.startsWith('brain/')) {
-    return c.json({ error: 'Path must start with brain/' }, 400)
+  if (!body.path.startsWith('brain/') && !body.path.startsWith('hunts/')) {
+    return c.json({ error: 'Path must start with brain/ or hunts/' }, 400)
   }
   if (body.path.includes('..')) {
     return c.json({ error: 'Path traversal not allowed' }, 400)
@@ -229,10 +229,11 @@ app.post('/api/brain/push', async (c) => {
       commitSha = createData.commit.sha
     }
 
-    // Skip auto-append when the explicit target IS GRAPH-INDEX itself —
-    // otherwise an explicit GRAPH-INDEX update would trigger a recursive
-    // self-append of a meta-row pointing at GRAPH-INDEX.md.
-    if (body.path !== GRAPH_INDEX_PATH) {
+    // Skip auto-append when:
+    // 1. The explicit target IS GRAPH-INDEX itself (would recurse).
+    // 2. The path is not under brain/ (e.g. hunts/ writes — tracked elsewhere,
+    //    don't pollute the brain knowledge graph index with hunt scaffolds).
+    if (body.path !== GRAPH_INDEX_PATH && body.path.startsWith('brain/')) {
       await appendToGraphIndex(body.path, body.message, headers)
     }
     return c.json({ ok: true, sha: commitSha, path: body.path, updated: !!existingFile })
