@@ -1,0 +1,20 @@
+name = "mapmaker"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "HUNTS_KV"
+id = "c00516feed5c405fb88556e9118debd8"
+
+[vars]
+BRAIN_WRITE_URL = "https://thechefos-brain-write.tveg-baking.workers.dev/api/brain/push"
+
+# Secrets (set via wrangler secret put or GHA env in deploy.yml):
+#   TELEGRAM_TOKEN     — @Aether_MapMaker_bot bot token
+#   WEBHOOK_SECRET     — random 32+ char string for Telegram webhook verification
+#   BRAIN_WRITE_SECRET — shared secret for thechefos-brain-write Worker (= LOCKE_BRAIN_WRITE_SECRET)
+#   FORGE_OPS_CHAT_ID  — numeric chat_id of THDD group (-5276079329)
+
+[observability]
+enabled = true

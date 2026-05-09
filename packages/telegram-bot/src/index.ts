@@ -117,7 +117,7 @@ app.post('/api/telegram', async (c) => {
       // Conductor commands → forward to n8n Telegram Command Router (any sender)
       const conductorCommands = ['/build', '/kill', '/babysit', '/hunts']
       const isConductor = conductorCommands.some(
-        (cmd) => message.text === cmd || message.text!.startsWith(cmd + ' ')
+        (cmd) => message.text === cmd || message.text!.startsWith(cmd + ' ') || message.text!.startsWith(cmd + '@')
       )
       if (isConductor) {
         await fetch('https://n8n.thechefos.app/webhook/telegram-commands', {
