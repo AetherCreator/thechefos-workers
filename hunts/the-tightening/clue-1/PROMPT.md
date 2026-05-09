@@ -1,4 +1,4 @@
-[CODE-AUTONOMOUS][DETERMINISTIC][NARROW]
+[CODE-AUTONOMOUS][DETERMINISTIC][SUBSTANTIAL]
 
 # The Tightening — Clue 1 (Variant A): Pre-Cached cp+commit
 
@@ -11,7 +11,7 @@
 Forensic: `brain/02-knowledge/the-tightening-c1-2026-05-08-synthesis-budget-data.md` (SuperClaude). Both prior fires preserved at `PROMPT-v1-failed-2026-05-08.md` + `PROMPT-variant-b-failed-2026-05-08.md`.
 
 **Source of truth:** `hunts/the-tightening/CHARTER.md` and `MAP.md` (read first — note: CHARTER cites Bible 1.1; this clue runs under Bible 1.2 — same goal, updated discipline).
-**Bible:** 1.2. **§A9 NARROW** — pure mechanical `cp` + `git`, hunter-exec.py shape work. NIM-direct (~3-7s per tool call, no claude-exec ceiling exposure). §A7 audit-wrap on shell ops. §A8 deterministic.
+**Bible:** 1.2. **§A9 SUBSTANTIAL** — claude-exec.sh substrate (clones repo to /tmp/<workspace>/, full Bash + Edit + Read + Write surface). Tag was originally [NARROW] but flipped after first fire 2026-05-08T18:08-18:13Z hit budget-exhausted on hunter-exec.py: substrate-fs mismatch (this PROMPT's `ls/cp/diff/git` tasks assume a local checkout; hunter-exec.py operates via GitHub API + shell_execute with no /tmp clone). Variant A's actual work is mechanical cp + small COMPLETE.md authoring — well below the 120s per-turn synthesis ceiling that killed Variant B. claude-exec.sh has built-in Long John ping (§6). §A7 audit-wrap on shell ops. §A8 deterministic.
 **Author COMPLETE.md at Task 6, BEFORE /health probes** (partial-complete antipattern mitigation).
 **Phantom rule:** `rtk` is NOT installed (Bible 1.2 §11). Use plain commands.
 
@@ -28,7 +28,7 @@ After this clue:
 
 ## Why pre-cached works where batched did not
 
-§3 row 2 catalog data: per-turn upstream timeout (~120s on claude-exec.sh + free-cc-proxy + NIM Nemotron-3-Super-120B) covers reasoning steps too, not just Write/Edit calls themselves. Batching Writes inside a single PROMPT does NOT save you when the model still has to reason about the next batch and that between-tool reasoning step exceeds budget. Variant A side-steps the ceiling entirely by pre-staging complete file content — Hunter's job is `cp` + `git`. No synthesis. No reasoning load. **And by tagging [NARROW], we route through hunter-exec.py instead of claude-exec.sh — different substrate, no per-turn 120s ceiling.**
+§3 row 2 catalog data: per-turn upstream timeout (~120s on claude-exec.sh + free-cc-proxy + NIM Nemotron-3-Super-120B) covers reasoning steps too, not just Write/Edit calls themselves. Batching Writes inside a single PROMPT does NOT save you when the model still has to reason about the next batch and that between-tool reasoning step exceeds budget. Variant A side-steps the ceiling by pre-staging complete file content — Hunter's job is `cp` + `git` + tiny COMPLETE.md authoring. No synthesis. Negligible reasoning load between mechanical tool calls. The 120s ceiling exists but isn't exposed at this work shape on claude-exec.sh.
 
 KV namespace `cost-telemetry-rollup` is **already created** (id `fb64c3edbf8043e38814a9ce543e760c`) — staged wrangler.toml has the real id baked in. Hunter does no infra creation.
 
@@ -101,7 +101,7 @@ Write `hunts/the-tightening/clue-1/COMPLETE.md`:
 
 **KV namespace:** id=fb64c3edbf8043e38814a9ce543e760c (cost-telemetry-rollup, pre-created via CF API at staging time)
 
-**Synthesis budget:** N/A — Variant A does no synthesis. All content pre-staged at scaffold time. Routes through hunter-exec.py (NIM-direct, ~3-7s per tool call) per [NARROW] tag.
+**Synthesis budget:** N/A — Variant A does no synthesis except for COMPLETE.md template substitution (~1KB). All deliverable content pre-staged at scaffold time. Routes through claude-exec.sh (re-tagged [SUBSTANTIAL] after first-fire substrate-fs mismatch on [NARROW]/hunter-exec.py).
 
 **Traffic light at completion:** {traffic_light from /dashboard probe}
 
