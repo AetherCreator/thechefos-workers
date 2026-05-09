@@ -36,5 +36,12 @@ WALL_CLOCK_BUDGET_MS = "90000"
 PER_JUDGE_TIMEOUT_MS = "60000"
 TYLER_CHAT_ID = "6091970994"
 
+# Foundry canary gate (added 2026-05-09):
+# "false" → approved verdicts route to brain/05-leads/_canary/ until Tyler reviews and lifts.
+# "true"  → approved verdicts route normally; Schemer is unblocked.
+# Lift via: wrangler secret put CANARY_LIFTED=true (or update this var + redeploy).
+# Protocol: brain/02-knowledge/foundry-canary-protocol.md
+CANARY_LIFTED = "false"
+
 [ai]
 binding = "AI"
