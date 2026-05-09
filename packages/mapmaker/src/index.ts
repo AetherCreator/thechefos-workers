@@ -97,12 +97,26 @@ function parseCharter(text: string): ValidationResult {
     errors.push(`\`bank\` must be a path under \`brain/\` (got: \`${frontmatter.bank}\`)`);
   }
 
+  // Walk lines to find the ## MAP section and count its bullets.
+  // Earlier lookahead-based regex with the `m` flag misfired because `$` matches
+  // end-of-LINE under multiline mode — the lazy capture stopped after the first
+  // bullet, mis-reporting waypoint count. Line-walker is unambiguous.
   const body = fmMatch[2];
-  const mapMatch = body.match(/^##\s+MAP\s*\n([\s\S]*?)(?=\n##\s|\n#\s|$)/m);
-  if (!mapMatch) {
+  const lines = body.split('\n');
+  const mapStart = lines.findIndex((l) => /^##\s+MAP\s*$/.test(l));
+  if (mapStart === -1) {
     errors.push('Body must contain a `## MAP` section');
   } else {
-    const waypoints = mapMatch[1].match(/^[-*]\s+/gm) ?? [];
+    let mapEnd = lines.length;
+    for (let i = mapStart + 1; i < lines.length; i++) {
+      if (/^#{1,2}\s/.test(lines[i])) {
+        mapEnd = i;
+        break;
+      }
+    }
+    const waypoints = lines
+      .slice(mapStart + 1, mapEnd)
+      .filter((l) => /^[-*]\s+/.test(l));
     if (waypoints.length < 3) {
       errors.push(`MAP must have ≥3 waypoints (found: ${waypoints.length})`);
     }
