@@ -186,9 +186,52 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function checkTelemetry(): Promise<{ traffic_light: string; neurons_remaining_estimate?: number }> {
+  // Cost-telemetry probe — fails-soft: returns "unknown" on network error so Locke proceeds normally.
+  try {
+    const r = await fetch("https://cost-telemetry.tveg-baking.workers.dev/dashboard", { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return { traffic_light: "unknown" };
+    return await r.json() as { traffic_light: string; neurons_remaining_estimate?: number };
+  } catch {
+    return { traffic_light: "unknown" };
+  }
+}
+
 async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: number; discarded: number; status: string; session_id: string }> {
   const sessionId = crypto.randomUUID();
   const startedAt = Date.now();
+
+  // Cost-telemetry defer guard: bail early when neurons are low to avoid burning cap.
+  // Telemetry "unknown" (fetch failed / Worker down) proceeds normally — telemetry must NOT block Locke.
+  const tel = await checkTelemetry();
+  if (tel.traffic_light === "red" || tel.traffic_light === "depleted") {
+    await logIntel(env, { event: 'deferred_neurons_low', session_id: sessionId, trigger, telemetry: tel });
+    const deferredReport = {
+      session_id: sessionId,
+      persona: env.PERSONA,
+      trigger,
+      started_at: new Date(startedAt).toISOString(),
+      ended_at: new Date().toISOString(),
+      wall_clock_ms: Date.now() - startedAt,
+      candidates_scanned: 0,
+      nim_calls: 0,
+      leads_kept: 0,
+      leads_discarded: 0,
+      status: 'deferred',
+      reason: 'neurons_low',
+      telemetry: tel
+    };
+    try {
+      await writeBrain(
+        `${env.BRAIN_PATH}/_sessions/${env.PERSONA}-${sessionId}.json`,
+        JSON.stringify(deferredReport, null, 2),
+        `locke-harvest deferred: ${sessionId} (neurons_low)`,
+        env
+      );
+    } catch (_) { /* best-effort */ }
+    return { kept: 0, discarded: 0, status: 'deferred', session_id: sessionId };
+  }
+
   const wallClockBudget = parseInt(env.WALL_CLOCK_BUDGET_MS, 10);
   const maxLeads = parseInt(env.MAX_LEADS_PER_RUN, 10);
   const nimBudget = parseInt(env.NIM_BUDGET, 10);
