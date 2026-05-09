@@ -20,5 +20,7 @@ BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 binding = "KV"
 id = "fb64c3edbf8043e38814a9ce543e760c"
 
-[triggers]
-crons = ["0 * * * *"]
+# [triggers] block removed 2026-05-09: account at 5/5 free-plan cron cap when
+# cost-telemetry first deployed. /dashboard recomputes on-demand when KV is stale
+# (loadRollup falls back to recomputeRollup), so cron is nice-to-have not critical.
+# Re-add when a cron slot frees up OR account upgrades from free plan.
