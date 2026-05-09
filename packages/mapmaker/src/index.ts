@@ -120,13 +120,33 @@ async function tg(env: Env, method: string, payload: any): Promise<Response> {
   });
 }
 
+
+// Convert our internal markdown-like syntax to safe Telegram HTML.
+// Markdown V1's underscore-as-italic semantics break on plain text containing `_`
+// (e.g. "chat_id", "Mastro_ClaudeBot"). HTML mode avoids that whole class of bugs.
+function mdToHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/```([\s\S]*?)```/g, (_m, code) => `<pre>${code}</pre>`)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*([^*]+)\*/g, '<b>$1</b>');
+}
+
 async function reply(env: Env, chatId: number | string, text: string, replyTo?: number): Promise<void> {
-  await tg(env, 'sendMessage', {
+  const r = await tg(env, 'sendMessage', {
     chat_id: chatId,
-    text,
-    parse_mode: 'Markdown',
+    text: mdToHtml(text),
+    parse_mode: 'HTML',
     reply_to_message_id: replyTo,
   });
+  if (!r.ok) {
+    // Fall back to plain text if HTML parsing somehow fails. Visibility > formatting.
+    const errBody = await r.text().catch(() => '');
+    console.error('reply HTML failed, falling back to plain', r.status, errBody.slice(0, 200));
+    await tg(env, 'sendMessage', { chat_id: chatId, text, reply_to_message_id: replyTo });
+  }
 }
 
 async function brainWrite(env: Env, path: string, content: string, message: string): Promise<{ ok: boolean; error?: string }> {
