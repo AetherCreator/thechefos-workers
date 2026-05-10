@@ -541,15 +541,19 @@ async function runSweep(env: Env): Promise<any> {
   const startedAt = Date.now();
   const today = new Date().toISOString().slice(0, 10);
 
-  await logIntel(env, { event: 'sweep_start', session_id: sessionId, target_date: today });
+  // Locke writes leads to _drafts/ (per LOCKE-OUTPUT-SCHEMA v1.0 + observed
+  // 2026-05-10 first organic fire). Verdicts route to _drafts/ (killed),
+  // _canary/ (approved+gate-up), or _review/ (abstained/unprocessable).
+  // Idempotency via verdictExists check makes re-runs safe.
+  await logIntel(env, { event: 'sweep_start', session_id: sessionId, target_dir: '_drafts', date_context: today });
 
   // GitHub Contents API for directory listing (raw URLs don't list dirs)
-  const apiUrl = `${env.BRAIN_GH_API_BASE}/brain/05-leads/${today}`;
+  const apiUrl = `${env.BRAIN_GH_API_BASE}/brain/05-leads/_drafts`;
   let files: any[] = [];
   try {
     const r = await fetch(apiUrl, { headers: ghReadHeaders(env, 'application/vnd.github.v3+json') });
     if (r.status === 404) {
-      await logIntel(env, { event: 'sweep_no_leads_today', session_id: sessionId });
+      await logIntel(env, { event: 'sweep_no_leads', session_id: sessionId, target_dir: '_drafts' });
       return { processed: 0, approved: 0, killed: 0, abstained: 0, unprocessable: 0, skipped: 0, errors: [], wall_clock_ms: Date.now() - startedAt };
     }
     if (!r.ok) throw new Error(`GitHub Contents API ${r.status}`);
