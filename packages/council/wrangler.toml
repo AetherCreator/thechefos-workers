@@ -39,12 +39,16 @@ WALL_CLOCK_BUDGET_MS = "90000"
 PER_JUDGE_TIMEOUT_MS = "60000"
 TYLER_CHAT_ID = "6091970994"
 
-# Foundry canary gate (added 2026-05-09):
+# Foundry canary gate (added 2026-05-09, lifted 2026-05-10):
 # "false" → approved verdicts route to brain/05-leads/_canary/ until Tyler reviews and lifts.
 # "true"  → approved verdicts route normally; Schemer is unblocked.
-# Lift via: wrangler secret put CANARY_LIFTED=true (or update this var + redeploy).
-# Protocol: brain/02-knowledge/foundry-canary-protocol.md
-CANARY_LIFTED = "false"
+# Lifted 2026-05-10 after recalibration: criteria changed from "3 approvals" to
+# "3 verified verdicts of any decision". Sunday first organic fire produced 3
+# sharp Council judgments (2 kills + 1 abstain) demonstrating discrimination
+# capability; Locke's current low/single_signal output unlikely to organically
+# score ≥95. Reverse-lift symmetric: flip to "false" + redeploy.
+# Protocol: brain/02-knowledge/foundry-canary-protocol.md (recalibrated 2026-05-10)
+CANARY_LIFTED = "true"
 
 [ai]
 binding = "AI"
