@@ -13,8 +13,11 @@ account_id = "cc231edbff18405233612d7afb657f1f"
 PERSONA = "council"
 COUNCIL_SCHEMA_VERSION = "council-1.0"
 SUPPORTED_LEAD_VERSIONS = "[\"locke-1.0\"]"
-CONFIDENCE_FILTER = "[\"medium\",\"high\",\"dead_certain\"]"
-PATTERN_TYPE_FILTER = "[\"repeated\",\"long_con\"]"
+# 2026-05-10: pre-filter loosened to accept all Locke output. Council's 95.0
+# geometric mean + Foundry canary gate are the actual quality gates. Kept as
+# schema-version guard only; expand if Locke produces calibrated discrimination.
+CONFIDENCE_FILTER = "[\"low\",\"medium\",\"high\",\"dead_certain\"]"
+PATTERN_TYPE_FILTER = "[\"single_signal\",\"repeated\",\"long_con\"]"
 THRESHOLD = "95.0"
 # NIM_URL retained as legacy var (no longer read by code post Kimi pivot 2026-05-07);
 # kept in env to ease revert if Kimi K2.6 underperforms on judge prompts.
