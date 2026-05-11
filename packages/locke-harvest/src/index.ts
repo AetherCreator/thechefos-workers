@@ -366,21 +366,29 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   // evidence[].pattern_signal correctly per LOCKE-OUTPUT-SCHEMA v1.1 §3.
   // Per-query events accumulate in-memory and flush as one phase1_summary
   // logIntel call at end — keeps total /run subreq count under CF 50-cap.
+  // Per-query results land in buckets, then round-robin interleaved into
+  // `candidates[]` so slice(0,N) for small N spans ≥2 communities (2026-05-11
+  // evening: OPS-LOCKE-CANDIDATE-INTERLEAVE fix — was cluster-major flat push,
+  // making first N candidates community-monoculture and blocking
+  // `pattern_type: repeated`).
   const queryEvents: any[] = [];
   let queriesSucceeded = 0;
   let queriesFailed = 0;
   let queryIdx = 0;
   let budgetExhausted = false;
+  const perQueryBuckets: Array<Array<{ url: string; title: string; snippet: string; theme: string }>> = [];
   for (const { theme, query } of HUNT_QUERIES) {
     if (Date.now() - startedAt > wallClockBudget) {
       budgetExhausted = true;
       queryEvents.push({ theme, query, status: 'skipped_budget' });
+      perQueryBuckets.push([]);
       break;
     }
     if (queryIdx > 0 && perQuerySleep > 0) {
       await sleep(perQuerySleep);
     }
     queryIdx++;
+    const bucket: Array<{ url: string; title: string; snippet: string; theme: string }> = [];
     try {
       const results = await adapterSearch(query, env);
       queriesSucceeded++;
@@ -388,11 +396,23 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
       for (const r of results) {
         if (!r.url || seenUrls.has(r.url)) continue;
         seenUrls.add(r.url);
-        candidates.push({ url: r.url, title: r.title || '', snippet: r.content || '', theme });
+        bucket.push({ url: r.url, title: r.title || '', snippet: r.content || '', theme });
       }
     } catch (e: any) {
       queriesFailed++;
       queryEvents.push({ theme, query, adapter: routeFor(query), status: 'error', error: String(e?.message ?? e).slice(0, 200) });
+    }
+    perQueryBuckets.push(bucket);
+  }
+  // Round-robin interleave: bucket[0][0], bucket[1][0], bucket[2][0], ..., bucket[0][1], bucket[1][1], ...
+  // First N positions of `candidates` now span N different queries (and likely N different
+  // communities), making slice(0,3) feed cross-community diversity to the analyzer.
+  const maxBucketLen = perQueryBuckets.reduce((m, b) => Math.max(m, b.length), 0);
+  for (let pos = 0; pos < maxBucketLen; pos++) {
+    for (const bucket of perQueryBuckets) {
+      if (pos < bucket.length) {
+        candidates.push(bucket[pos]);
+      }
     }
   }
   // Batch flush — one subreq instead of 20-40
@@ -404,6 +424,7 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     queries_failed: queriesFailed,
     budget_exhausted: budgetExhausted,
     candidates_after_dedup: candidates.length,
+    candidate_ordering: 'round_robin_per_query',
     events: queryEvents
   });
 
