@@ -18,7 +18,7 @@ interface Env {
   AI: any;                           // Workers AI binding (Kimi K2.6 in-network)
   PERSONA: string;
   COUNCIL_SCHEMA_VERSION: string;
-  SUPPORTED_LEAD_VERSIONS: string;   // JSON array as string
+  SUPPORTED_LEAD_VERSIONS: string;   // comma-split list (legacy JSON-array form tolerated) — see parseSupportedLeadVersions
   CONFIDENCE_FILTER: string;         // JSON array
   PATTERN_TYPE_FILTER: string;       // JSON array
   THRESHOLD: string;                 // float as string
@@ -329,8 +329,22 @@ async function verdictExists(leadPath: string, env: Env): Promise<boolean> {
   }
 }
 
+// Per LOCKE-OUTPUT-SCHEMA-v1.1.md §5: SUPPORTED_LEAD_VERSIONS is comma-split
+// (e.g. "locke-1.0,locke-1.1"). Tolerate the legacy JSON-array form
+// ("[\"locke-1.0\"]") so deploys don't need coordinated env updates.
+function parseSupportedLeadVersions(raw: string): string[] {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed);
+      if (Array.isArray(arr)) return arr.map(String).map(s => s.trim()).filter(Boolean);
+    } catch { /* fall through to comma-split */ }
+  }
+  return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+}
+
 function filterLead(lead: any, env: Env): { passes: boolean; reason?: string } {
-  const supported: string[] = JSON.parse(env.SUPPORTED_LEAD_VERSIONS);
+  const supported: string[] = parseSupportedLeadVersions(env.SUPPORTED_LEAD_VERSIONS);
   const confidenceFilter: string[] = JSON.parse(env.CONFIDENCE_FILTER);
   const patternFilter: string[] = JSON.parse(env.PATTERN_TYPE_FILTER);
   if (!supported.includes(lead?.schema_version)) {
@@ -640,7 +654,7 @@ export default {
         schema: env.COUNCIL_SCHEMA_VERSION,
         model: env.NIM_MODEL,
         threshold: parseFloat(env.THRESHOLD),
-        supported_lead_versions: JSON.parse(env.SUPPORTED_LEAD_VERSIONS)
+        supported_lead_versions: parseSupportedLeadVersions(env.SUPPORTED_LEAD_VERSIONS)
       });
     }
 
