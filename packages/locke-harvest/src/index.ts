@@ -163,45 +163,38 @@ async function logIntel(env: Env, event: Record<string, any>): Promise<void> {
 }
 
 async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
-  // NVIDIA NIM Nemotron-120B via OpenAI-compatible chat-completions HTTP.
-  // Reverted 2026-05-11 from Workers AI Kimi K2.6 binding after free-tier 10k
-  // neurons/day was exhausted by upstream consumers, blocking the-prism/clue-3.
-  // Sync (stream:false) — the 524 mitigation here is payload-size reduction
-  // (candidates.slice(0,12) → slice(0,6) in runHunt) not transport tricks.
-  // max_tokens 6144: enough headroom for Nemotron <think> reasoning + 2–3 leads
-  // of v1.1 JSON (each ~600 tok with evidence[]); historical 4096 was sized
-  // for the pre-v1.1 lead shape without evidence arrays.
-  const r = await fetch(env.NIM_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.NIM_API_KEY}`,
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify({
-      model: env.NIM_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 6144,
-      stream: false
-    })
+  // 2026-05-11 evening: swapped NVIDIA NIM HTTP → Cloudflare Workers AI binding
+  // (OPS-LOCKE-NIM-CEILING fix). NIM Nemotron-120B's ~145s NVIDIA edge timeout
+  // was brittle at slice(0,3) (cleared on fires 4+5, 524'd on fires 1,3,6 —
+  // Nemotron <think> reasoning is variable-time). Workers AI Llama-3.3-70b-fast
+  // typically completes in 5-15s, immune to NVIDIA edge variability.
+  //
+  // Function name `callNim` retained for diff stability with prior commits.
+  // env.NIM_MODEL now holds the Workers AI model ID (@cf/meta/llama-...).
+  // env.NIM_URL + env.NIM_API_KEY remain declared in Env but unused on this path.
+  //
+  // Quota note: Workers AI free tier 10k neurons/day shared across all
+  // in-network consumers. 4006 errors surface here on quota exhaustion; the
+  // outer try/catch in runHunt writes a diagnostic node and returns no_leads.
+  const response: any = await env.AI.run(env.NIM_MODEL, {
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    temperature: 0.3,
+    max_tokens: 6144,
+    stream: false
   });
-  if (!r.ok) {
-    const errText = await r.text().catch(() => '');
-    throw new Error(`NIM ${r.status}: ${errText.slice(0, 400)}`);
-  }
-  const data: any = await r.json();
-  // OpenAI-compatible response shape. Nemotron emits <think>...</think> blocks
-  // inline in content; extractJsonArray strips them downstream.
+  // Workers AI chat-model response: either { response: "text" } (simple shape)
+  // or OpenAI-shape { choices: [{ message: { content: "..." } }] }.
+  // Defensive parsing covers both.
   const text =
-    data?.choices?.[0]?.message?.content ||
-    data?.choices?.[0]?.text ||
+    response?.response ||
+    response?.choices?.[0]?.message?.content ||
+    response?.choices?.[0]?.text ||
     '';
   if (!text) {
-    throw new Error(`NIM empty: keys=${Object.keys(data || {}).join(',')} | preview=${JSON.stringify(data).slice(0, 600)}`);
+    throw new Error(`Workers AI empty: keys=${Object.keys(response || {}).join(',')} | preview=${JSON.stringify(response).slice(0, 600)}`);
   }
   return text;
 }
@@ -436,21 +429,19 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only).
   // harvestedAt is used both by buildUserPrompt (as the suggested evidence[].harvested_at)
   // and below as the lead-level harvested_at — single timestamp per session.
-  // Slice 0,3: dropped from 0,4 on 2026-05-11 evening after second NIM 524 hit
-  // post-adapter-pivot. Even slice(0,4) + trimmed prompts didn't clear NVIDIA's
-  // ~145s edge ceiling — Nemotron-120B's <think> reasoning eats variable time.
-  // 3 candidates is the floor: pattern_type:repeated requires evidence.length≥3
-  // AND ≥2 distinct communities, so analyzer must use ALL 3 entries from ≥2
-  // distinct sources (e.g. two subreddits + one HN, or three different subreddits
-  // when the Reddit adapter returns hits from /r/SaaS, /r/jobs, /r/startups etc).
-  // If this still 524s, the answer is model swap (Llama-3.3-70b-fast or Kimi K2.6
-  // post-daily-reset), not further slice reduction.
+  // Slice 0,8: bumped from 0,3 after model swap to Workers AI Llama-3.3-70b-fast
+  // (2026-05-11 evening, OPS-LOCKE-NIM-CEILING). The 0,3 cap was a payload squeeze
+  // to clear NVIDIA NIM's ~145s edge ceiling. Workers AI binding runs in-network
+  // with no equivalent ceiling; Llama-3.3-70b-fast handles 8-candidate payloads
+  // in 5-15s wall. 8 candidates × ~800 chars JSON + interleaved community
+  // diversity gives the analyzer breadth for `pattern_type: repeated` honest
+  // assignment per LOCKE-OUTPUT-SCHEMA §3.
   const harvestedAt = new Date().toISOString();
   let leads: any[] = [];
   let nimText = '';
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
-    const userPrompt = buildUserPrompt(candidates.slice(0, 3), harvestedAt);
+    const userPrompt = buildUserPrompt(candidates.slice(0, 8), harvestedAt);
     nimText = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimCalls++;
     leads = extractJsonArray(nimText);
