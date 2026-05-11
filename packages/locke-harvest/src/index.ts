@@ -18,6 +18,13 @@
 //     + parsed leads) to _drafts/analyzer-trace-{sessionId}.json. Supersedes nim-error-*.json
 //     (which only fired on parse failure and only captured a 5000-char preview). Unblocks
 //     model-vs-prompt-vs-noise disambiguation when leads come back [].
+//   2026-05-11 (later evening, fire 8): Trace immediately exposed the actual bug — Workers AI
+//     Llama-3.3-70b-fp8-fast returns `response.response` as a NATIVE JS ARRAY (not a JSON
+//     string) when prompted for an array. extractJsonArray called text.replace() on the
+//     array, threw, caught silently, leads=[]. Llama had returned TWO valid `pattern_type:
+//     repeated` leads with cross-community evidence — they were just dropped on the floor.
+//     One-line fix in callNim: stringify when raw is non-string so extractJsonArray's
+//     regex/parse path stays uniform. Pattern banked separately for future Worker authors.
 
 import { search as adapterSearch, routeFor } from './searchAdapters';
 
@@ -194,14 +201,22 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
     max_tokens: 6144,
     stream: false
   });
-  // Workers AI chat-model response: either { response: "text" } (simple shape)
-  // or OpenAI-shape { choices: [{ message: { content: "..." } }] }.
-  // Defensive parsing covers both.
-  const text =
+  // Workers AI chat-model response shapes:
+  //   - { response: "text" } — simple string shape
+  //   - { choices: [{ message: { content: "..." } }] } — OpenAI shape
+  //   - { response: [...array...] } or { response: {...obj...} } — NATIVE JSON
+  //     output when the model is asked for an array. Discovered via
+  //     OPS-LOCKE-ANALYZER-TUNING fire 8 (2026-05-11): Llama-3.3-70b-fp8-fast
+  //     returned two valid `pattern_type: repeated` leads as a JS array, which
+  //     then choked extractJsonArray's text.replace() call on a non-string.
+  //     Stringify when raw is non-string so the downstream regex/parse path
+  //     stays uniform — extractJsonArray sees a JSON-array string either way.
+  const rawText =
     response?.response ||
     response?.choices?.[0]?.message?.content ||
     response?.choices?.[0]?.text ||
     '';
+  const text = typeof rawText === 'string' ? rawText : JSON.stringify(rawText);
   if (!text) {
     throw new Error(`Workers AI empty: keys=${Object.keys(response || {}).join(',')} | preview=${JSON.stringify(response).slice(0, 600)}`);
   }
