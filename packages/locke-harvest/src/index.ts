@@ -26,18 +26,47 @@ interface Env {
   HARVEST_RUN_SECRET: string;
 }
 
-const HUNT_QUERIES = [
-  'site:reddit.com "I wish there was" tool app',
-  'site:reddit.com "I spend hours" manual workflow',
-  'site:reddit.com "there has to be a better way"',
-  'site:news.ycombinator.com "Show HN" "looking for feedback"',
-  'site:reddit.com "switched from" "because"',
-  'site:reddit.com/r/SaaS "validated" OR "first paying customer"',
-  'site:reddit.com/r/indiehackers "revenue" AND "solo"',
-  'site:reddit.com "wish" AND "tool" AND "exists"',
-  'site:reddit.com "manual process" "annoying"',
-  'site:reddit.com "alternative to" "but"'
-];
+// Theme clusters per prompts/LOCKE-THEME-CLUSTERS.md (the-prism clue-1).
+// 5 themes × 4 queries × ≥3 distinct communities — multi-source by construction
+// so an analyzer can honestly mark `pattern_type: repeated` per
+// LOCKE-OUTPUT-SCHEMA v1.1 §3.
+const HUNT_CLUSTERS: Record<string, string[]> = {
+  manual_process_pain: [
+    'site:reddit.com "I spend hours" manual OR "by hand"',
+    'site:news.ycombinator.com "we built" OR "I built" "to automate"',
+    'site:lobste.rs "tedious" workflow',
+    'site:indiehackers.com "I was spending" "every week"'
+  ],
+  build_vs_buy_friction: [
+    'site:reddit.com "I built my own" "because" tool',
+    'site:news.ycombinator.com "I rolled my own" OR "wrote my own"',
+    'site:indiehackers.com "couldn\'t find" "so I built"',
+    'site:lobste.rs "yak shaving" OR "ended up building"'
+  ],
+  current_solution_failures: [
+    'site:reddit.com/r/SaaS "switched from" "because"',
+    'site:reddit.com/r/startups "alternative to" "but" "doesn\'t"',
+    'site:news.ycombinator.com "Show HN" "alternative" OR "better than"',
+    'site:indiehackers.com "tried" "but" "ended up"'
+  ],
+  mvp_validation_signals: [
+    'site:reddit.com/r/SaaS "first paying customer" OR "first sale"',
+    'site:reddit.com/r/indiehackers "validated" OR "MRR"',
+    'site:news.ycombinator.com "Show HN" "looking for feedback"',
+    'site:indiehackers.com "month 1" OR "month 2" "revenue"'
+  ],
+  growth_bottleneck: [
+    'site:reddit.com/r/SaaS "stuck at" MRR OR "plateau"',
+    'site:reddit.com/r/Entrepreneur "can\'t scale" OR "bottleneck"',
+    'site:news.ycombinator.com "Ask HN" "scaling" solo',
+    'site:indiehackers.com "the hardest part" OR "bottleneck"'
+  ]
+};
+// Flat {theme, query} list derived from HUNT_CLUSTERS — cluster map is the
+// single source of truth; iteration carries theme through so each candidate
+// can be annotated for the analyzer.
+const HUNT_QUERIES: Array<{ theme: string; query: string }> = Object.entries(HUNT_CLUSTERS)
+  .flatMap(([theme, queries]) => queries.map(query => ({ theme, query })));
 
 const SYSTEM_PROMPT = `You are Locke Lamora, the Thorn of Camorr — Tyler's autonomous demand signal hunter.
 You read forum threads as a thief reads a tavern: looking for marks, listening for pain.
@@ -49,16 +78,42 @@ Rules:
 - Identify existing solutions and WHY they fail
 - Be brutally honest about signal strength. One person complaining is not a market
 - Flag Long Con patterns: same pain across different communities
+- Populate the evidence[] array per LOCKE-OUTPUT-SCHEMA v1.1 §2. One entry per
+  thread you actually used, with thread_url + community + snippet + harvested_at
+  + pattern_signal. Community values follow §2 format
+  (reddit | reddit:r/<name> | hn | lobsters | indiehackers | other:<host>).
+- Self-enforce pattern_type per §3 against your own evidence ledger:
+  * "single_signal" if evidence.length == 1 OR all communities identical
+  * "repeated" requires length ≥ 3, ≥ 2 distinct communities, all corroborates
+  * "long_con" requires length ≥ 5 with ≥ 3 distinct communities (or ≥ 2
+    distinct communities spanning > 30 days)
+  Any "contradicts" or "orthogonal" entry forces "single_signal". If the
+  evidence doesn't earn the stronger tier, mark it lower honestly.
 
 Return ONLY a JSON array of leads. No prose. No markdown fences. No commentary. No <think> blocks in your final output.`;
 
-function buildUserPrompt(results: Array<{ url: string; title: string; snippet: string }>): string {
+function buildUserPrompt(
+  results: Array<{ url: string; title: string; snippet: string; theme: string }>,
+  harvestedAt: string
+): string {
   // Truncate snippets to keep NIM input predictable; verbose Reddit snippets can be 500+ chars,
   // and 12 candidates * 500 chars + reasoning overhead pushed Cloudflare's subrequest abort 2026-05-07.
-  const trimmed = results.map(r => ({ url: r.url, title: (r.title || '').slice(0, 120), snippet: (r.snippet || '').slice(0, 240) }));
+  const trimmed = results.map(r => ({
+    url: r.url,
+    title: (r.title || '').slice(0, 120),
+    snippet: (r.snippet || '').slice(0, 240),
+    theme: r.theme
+  }));
   return `Analyze these search results for product demand signals.
 
-Search results:
+Each candidate is annotated with the THEME cluster that surfaced it:
+- manual_process_pain — people doing painful work by hand
+- build_vs_buy_friction — people who rolled their own because no tool fit
+- current_solution_failures — people churning from existing tools
+- mvp_validation_signals — indie hackers sharing what worked at low MRR
+- growth_bottleneck — solo founders stuck on a scaling problem
+
+Candidates (with theme):
 ${JSON.stringify(trimmed, null, 2)}
 
 For each potential opportunity (max 5), return JSON matching this exact shape:
@@ -78,8 +133,31 @@ For each potential opportunity (max 5), return JSON matching this exact shape:
   "thread_count": 0,
   "total_upvotes": 0,
   "related_leads": [],
-  "locke_notes": "30-300 chars, your one-liner in Locke's voice"
+  "locke_notes": "30-300 chars, your one-liner in Locke's voice",
+  "evidence": [
+    {
+      "thread_url": "https://...",
+      "community": "reddit:r/SaaS | reddit | hn | lobsters | indiehackers | other:<host>",
+      "snippet": "exact quote ≤500 chars that signals the pain",
+      "harvested_at": "${harvestedAt}",
+      "pattern_signal": "corroborates | contradicts | orthogonal"
+    }
+  ]
 }
+
+evidence[] is REQUIRED (≥ 1 entry) per LOCKE-OUTPUT-SCHEMA v1.1 §2. Each entry:
+- thread_url MUST be a URL drawn from the candidates above (no fabrication)
+- community uses the §2 enum format; prefer subreddit-scoped (reddit:r/<name>) over bare "reddit"
+- snippet is a 1–500 char exact quote/paraphrase from the candidate that signals the pain
+- harvested_at reuses the session timestamp ("${harvestedAt}") for current-fire evidence
+- pattern_signal ∈ {corroborates, contradicts, orthogonal}
+No duplicate thread_url within one lead's evidence[].
+
+pattern_type rules (§3 — enforce against your own evidence):
+- "single_signal": evidence.length == 1 OR all evidence[].community values identical
+- "repeated": evidence.length ≥ 3 AND ≥ 2 distinct communities AND all corroborates
+- "long_con": (evidence.length ≥ 5 AND ≥ 3 distinct communities) OR (≥ 2 distinct communities AND harvested_at spans > 30 days)
+- Any "contradicts" or "orthogonal" entry downgrades the lead to "single_signal"
 
 Return ONLY a JSON array. Return [] if no real signal found. Honest beats fabricated.`;
 }
@@ -141,11 +219,17 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
   return text;
 }
 
+// LOCKE-OUTPUT-SCHEMA v1.1 §2 community format — bare reddit or subreddit-scoped,
+// canonical platform tokens, or `other:<host>` for anything else.
+const COMMUNITY_REGEX = /^(reddit(:r\/[a-zA-Z0-9_]+)?|hn|lobsters|indiehackers|other:[a-z0-9.-]+)$/;
+const PATTERN_SIGNAL_ENUM = new Set(['corroborates', 'contradicts', 'orthogonal']);
+const PATTERN_TYPE_RANK: Record<string, number> = { single_signal: 1, repeated: 2, long_con: 3 };
+
 function isValidLead(lead: any): { ok: boolean; reason?: string } {
   if (!lead || typeof lead !== 'object') return { ok: false, reason: 'not-object' };
   const required = ['lead_id', 'source_threads', 'mark_profile', 'pain_statement', 'pain_frequency',
     'pain_intensity', 'angle', 'estimated_price', 'market_size_signal', 'confidence',
-    'pattern_type', 'thread_count', 'total_upvotes', 'locke_notes'];
+    'pattern_type', 'thread_count', 'total_upvotes', 'locke_notes', 'evidence'];
   for (const f of required) {
     if (lead[f] === undefined || lead[f] === null) return { ok: false, reason: `missing:${f}` };
   }
@@ -157,6 +241,53 @@ function isValidLead(lead: any): { ok: boolean; reason?: string } {
   if (!['low', 'medium', 'high', 'dead_certain'].includes(lead.confidence)) return { ok: false, reason: 'confidence-enum' };
   if (!['single_signal', 'repeated', 'long_con'].includes(lead.pattern_type)) return { ok: false, reason: 'pattern_type-enum' };
   if (/^(everyone|all (developers|users|people)|most (people|users))/i.test(lead.mark_profile)) return { ok: false, reason: 'generic-mark_profile' };
+
+  // v1.1 evidence[] validation per LOCKE-OUTPUT-SCHEMA §7
+  if (!Array.isArray(lead.evidence) || lead.evidence.length < 1) {
+    return { ok: false, reason: 'evidence-empty' };
+  }
+  const seenThreadUrls = new Set<string>();
+  for (let i = 0; i < lead.evidence.length; i++) {
+    const e = lead.evidence[i];
+    if (!e || typeof e !== 'object') return { ok: false, reason: `evidence[${i}]-not-object` };
+    if (typeof e.thread_url !== 'string' || !e.thread_url) return { ok: false, reason: `evidence[${i}].thread_url-missing` };
+    try { new URL(e.thread_url); } catch { return { ok: false, reason: `evidence[${i}].thread_url-invalid` }; }
+    if (seenThreadUrls.has(e.thread_url)) return { ok: false, reason: `evidence[${i}].thread_url-duplicate` };
+    seenThreadUrls.add(e.thread_url);
+    if (typeof e.community !== 'string' || !COMMUNITY_REGEX.test(e.community)) return { ok: false, reason: `evidence[${i}].community-format` };
+    if (typeof e.snippet !== 'string' || e.snippet.length < 1 || e.snippet.length > 500) return { ok: false, reason: `evidence[${i}].snippet-length` };
+    if (typeof e.harvested_at !== 'string' || !e.harvested_at) return { ok: false, reason: `evidence[${i}].harvested_at-missing` };
+    if (typeof e.pattern_signal !== 'string' || !PATTERN_SIGNAL_ENUM.has(e.pattern_signal)) return { ok: false, reason: `evidence[${i}].pattern_signal-enum` };
+  }
+
+  // Decision-rule enforcement per §3. Compute the strongest pattern_type the
+  // evidence honestly earns; reject if the lead declares stronger.
+  const evLen = lead.evidence.length;
+  const distinctCommunities = new Set(lead.evidence.map((e: any) => e.community)).size;
+  const allCorroborate = lead.evidence.every((e: any) => e.pattern_signal === 'corroborates');
+  let daySpan = 0;
+  if (evLen >= 2) {
+    const times = lead.evidence
+      .map((e: any) => Date.parse(e.harvested_at))
+      .filter((t: number) => Number.isFinite(t));
+    if (times.length >= 2) {
+      daySpan = (Math.max(...times) - Math.min(...times)) / 86_400_000;
+    }
+  }
+  let earned: 'single_signal' | 'repeated' | 'long_con';
+  if (!allCorroborate) {
+    earned = 'single_signal';
+  } else if ((evLen >= 5 && distinctCommunities >= 3) || (distinctCommunities >= 2 && daySpan > 30)) {
+    earned = 'long_con';
+  } else if (evLen >= 3 && distinctCommunities >= 2) {
+    earned = 'repeated';
+  } else {
+    earned = 'single_signal';
+  }
+  if (PATTERN_TYPE_RANK[lead.pattern_type] > PATTERN_TYPE_RANK[earned]) {
+    return { ok: false, reason: 'pattern_type-evidence-mismatch' };
+  }
+
   return { ok: true };
 }
 
@@ -240,12 +371,14 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   await logIntel(env, { event: 'harvest_start', session_id: sessionId, trigger });
 
   const seenUrls = new Set<string>();
-  const candidates: Array<{ url: string; title: string; snippet: string }> = [];
+  const candidates: Array<{ url: string; title: string; snippet: string; theme: string }> = [];
   let nimCalls = 0;
 
-  // Phase 1 — SearXNG meta-search
+  // Phase 1 — SearXNG meta-search across 5 themed clusters (20 queries total).
+  // Each candidate carries its source theme so the analyzer can populate
+  // evidence[].pattern_signal correctly per LOCKE-OUTPUT-SCHEMA v1.1 §3.
   let queryIdx = 0;
-  for (const q of HUNT_QUERIES) {
+  for (const { theme, query } of HUNT_QUERIES) {
     if (Date.now() - startedAt > wallClockBudget) {
       await logIntel(env, { event: 'budget_exhausted', reason: 'wall_clock_phase1', session_id: sessionId });
       break;
@@ -255,15 +388,15 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     }
     queryIdx++;
     try {
-      const results = await searxngSearch(q, env);
-      await logIntel(env, { event: 'query_executed', session_id: sessionId, query: q, count: results.length });
+      const results = await searxngSearch(query, env);
+      await logIntel(env, { event: 'query_executed', session_id: sessionId, theme, query, count: results.length });
       for (const r of results) {
         if (!r.url || seenUrls.has(r.url)) continue;
         seenUrls.add(r.url);
-        candidates.push({ url: r.url, title: r.title || '', snippet: r.content || '' });
+        candidates.push({ url: r.url, title: r.title || '', snippet: r.content || '', theme });
       }
     } catch (e: any) {
-      await logIntel(env, { event: 'query_failed', session_id: sessionId, query: q, error: String(e?.message ?? e) });
+      await logIntel(env, { event: 'query_failed', session_id: sessionId, theme, query, error: String(e?.message ?? e) });
     }
   }
 
@@ -273,11 +406,14 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   }
 
   // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only)
+  // harvestedAt is used both by buildUserPrompt (as the suggested evidence[].harvested_at)
+  // and below as the lead-level harvested_at — single timestamp per session.
+  const harvestedAt = new Date().toISOString();
   let leads: any[] = [];
   let nimText = '';
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
-    const userPrompt = buildUserPrompt(candidates.slice(0, 12));
+    const userPrompt = buildUserPrompt(candidates.slice(0, 12), harvestedAt);
     nimText = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimCalls++;
     leads = extractJsonArray(nimText);
@@ -306,7 +442,6 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
 
   // Validate + write
   const today = new Date().toISOString().slice(0, 10);
-  const harvestedAt = new Date().toISOString();
   let kept = 0, discarded = 0;
 
   for (const raw of leads.slice(0, maxLeads)) {
