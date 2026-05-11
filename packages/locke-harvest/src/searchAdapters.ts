@@ -150,15 +150,22 @@ export const braveAdapter: SearchAdapter = {
 };
 
 // ============================================================================
-// Adapter chain — first-match-wins. Brave is the catch-all fallback (LAST).
-// HUNT_CLUSTERS query distribution (per LOCKE-THEME-CLUSTERS):
-//   - site:reddit.com[/r/X]:        8 queries → redditAdapter
-//   - site:news.ycombinator.com:    4 queries → hnAdapter
-//   - site:lobste.rs:               2 queries → braveAdapter (no clean Lobsters API)
-//   - site:indiehackers.com:        6 queries → braveAdapter (no public IH search API)
-// = 12/20 queries on free direct APIs; 8/20 on Brave free tier.
+// Adapter chain — first-match-wins. Reddit + HN only (Z3 free-coverage path,
+// 2026-05-11 evening). braveAdapter still exported above as opt-in fallback if
+// Tyler ever wants paid-tier coverage; removed from active chain to keep the
+// system 100% free.
+//
+// HUNT_CLUSTERS query distribution (post-Z3 reshape):
+//   - site:reddit.com[/r/X]:       15 queries → redditAdapter
+//   - site:news.ycombinator.com:    5 queries → hnAdapter
+// = 20/20 queries on free direct APIs (Reddit anon 60/min + HN Algolia generous).
+// 7 queries replaced lobsters/indiehackers targets with reddit subreddit
+// equivalents (r/sysadmin, r/Entrepreneur, r/SideProject, r/webdev,
+// r/smallbusiness, r/SideProject, r/buildinpublic) — distinct subreddits count
+// as distinct communities per LOCKE-OUTPUT-SCHEMA §2, so cross-community
+// diversity for `pattern_type: repeated` is preserved.
 // ============================================================================
-const ADAPTERS: SearchAdapter[] = [redditAdapter, hnAdapter, braveAdapter];
+const ADAPTERS: SearchAdapter[] = [redditAdapter, hnAdapter];
 
 /**
  * Search dispatcher. Picks the first matching adapter, runs it.
