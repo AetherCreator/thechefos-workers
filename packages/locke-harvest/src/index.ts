@@ -38,39 +38,42 @@ interface Env {
 }
 
 // Theme clusters per prompts/LOCKE-THEME-CLUSTERS.md (the-prism clue-1).
-// 5 themes × 4 queries × ≥3 distinct communities — multi-source by construction
-// so an analyzer can honestly mark `pattern_type: repeated` per
-// LOCKE-OUTPUT-SCHEMA v1.1 §3.
+// 5 themes × 4 queries. 2026-05-11 evening: lobsters + indiehackers queries
+// replaced with reddit subreddit equivalents (Z3 free-coverage decision) so
+// all 20 queries route through Reddit native search.json + HN Algolia — zero
+// paid-tier dependency. Distinct subreddits count as distinct communities per
+// LOCKE-OUTPUT-SCHEMA §2, preserving cross-community diversity for
+// `pattern_type: repeated` per §3.
 const HUNT_CLUSTERS: Record<string, string[]> = {
   manual_process_pain: [
     'site:reddit.com "I spend hours" manual OR "by hand"',
     'site:news.ycombinator.com "we built" OR "I built" "to automate"',
-    'site:lobste.rs "tedious" workflow',
-    'site:indiehackers.com "I was spending" "every week"'
+    'site:reddit.com/r/sysadmin "tedious" workflow',
+    'site:reddit.com/r/Entrepreneur "I was spending" "every week"'
   ],
   build_vs_buy_friction: [
     'site:reddit.com "I built my own" "because" tool',
     'site:news.ycombinator.com "I rolled my own" OR "wrote my own"',
-    'site:indiehackers.com "couldn\'t find" "so I built"',
-    'site:lobste.rs "yak shaving" OR "ended up building"'
+    'site:reddit.com/r/SideProject "couldn\'t find" "so I built"',
+    'site:reddit.com/r/webdev "yak shaving" OR "ended up building"'
   ],
   current_solution_failures: [
     'site:reddit.com/r/SaaS "switched from" "because"',
     'site:reddit.com/r/startups "alternative to" "but" "doesn\'t"',
     'site:news.ycombinator.com "Show HN" "alternative" OR "better than"',
-    'site:indiehackers.com "tried" "but" "ended up"'
+    'site:reddit.com/r/smallbusiness "tried" "but" "ended up"'
   ],
   mvp_validation_signals: [
     'site:reddit.com/r/SaaS "first paying customer" OR "first sale"',
     'site:reddit.com/r/indiehackers "validated" OR "MRR"',
     'site:news.ycombinator.com "Show HN" "looking for feedback"',
-    'site:indiehackers.com "month 1" OR "month 2" "revenue"'
+    'site:reddit.com/r/SideProject "month 1" OR "month 2" "revenue"'
   ],
   growth_bottleneck: [
     'site:reddit.com/r/SaaS "stuck at" MRR OR "plateau"',
     'site:reddit.com/r/Entrepreneur "can\'t scale" OR "bottleneck"',
     'site:news.ycombinator.com "Ask HN" "scaling" solo',
-    'site:indiehackers.com "the hardest part" OR "bottleneck"'
+    'site:reddit.com/r/buildinpublic "the hardest part" OR "bottleneck"'
   ]
 };
 // Flat {theme, query} list derived from HUNT_CLUSTERS — cluster map is the
