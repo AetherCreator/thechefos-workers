@@ -13,6 +13,11 @@
 //     adapter system in ./searchAdapters.ts — Reddit native search.json + HN Algolia + Brave
 //     Search API fallback. SEARXNG_URL/SEARXNG_ENGINES env vars retired. Per-query intel_log
 //     batched into one phase1_summary call to drop total /run subreq count from ~50 to ~28.
+//   2026-05-11 (later evening): OPS-LOCKE-ANALYZER-TUNING diagnostic capture — every fire that
+//     reaches Phase 3 now writes a full analyzer trace (candidates_sent + prompts + raw response
+//     + parsed leads) to _drafts/analyzer-trace-{sessionId}.json. Supersedes nim-error-*.json
+//     (which only fired on parse failure and only captured a 5000-char preview). Unblocks
+//     model-vs-prompt-vs-noise disambiguation when leads come back [].
 
 import { search as adapterSearch, routeFor } from './searchAdapters';
 
@@ -162,7 +167,7 @@ async function logIntel(env: Env, event: Record<string, any>): Promise<void> {
   }
 }
 
-async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
+async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<{ text: string; raw: any }> {
   // 2026-05-11 evening: swapped NVIDIA NIM HTTP → Cloudflare Workers AI binding
   // (OPS-LOCKE-NIM-CEILING fix). NIM Nemotron-120B's ~145s NVIDIA edge timeout
   // was brittle at slice(0,3) (cleared on fires 4+5, 524'd on fires 1,3,6 —
@@ -176,6 +181,10 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
   // Quota note: Workers AI free tier 10k neurons/day shared across all
   // in-network consumers. 4006 errors surface here on quota exhaustion; the
   // outer try/catch in runHunt writes a diagnostic node and returns no_leads.
+  //
+  // Return shape: { text, raw } — `text` is the extracted content string for
+  // JSON parsing; `raw` is the full Workers AI envelope (kept for analyzer-trace
+  // diagnostic capture, OPS-LOCKE-ANALYZER-TUNING).
   const response: any = await env.AI.run(env.NIM_MODEL, {
     messages: [
       { role: 'system', content: systemPrompt },
@@ -196,7 +205,7 @@ async function callNim(systemPrompt: string, userPrompt: string, env: Env): Prom
   if (!text) {
     throw new Error(`Workers AI empty: keys=${Object.keys(response || {}).join(',')} | preview=${JSON.stringify(response).slice(0, 600)}`);
   }
-  return text;
+  return { text, raw: response };
 }
 
 // LOCKE-OUTPUT-SCHEMA v1.1 §2 community format — bare reddit or subreddit-scoped,
@@ -436,36 +445,69 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   // in 5-15s wall. 8 candidates × ~800 chars JSON + interleaved community
   // diversity gives the analyzer breadth for `pattern_type: repeated` honest
   // assignment per LOCKE-OUTPUT-SCHEMA §3.
+  //
+  // OPS-LOCKE-ANALYZER-TUNING diagnostic capture: candidatesSent + userPrompt
+  // hoisted to outer scope so the analyzer-trace write below sees them regardless
+  // of try/catch outcome. Trace fires on every Phase 3 entry — success, parse
+  // failure, or thrown exception — so we never silently lose what the analyzer
+  // was given and what came back.
   const harvestedAt = new Date().toISOString();
+  const candidatesSent = candidates.slice(0, 8);
+  const userPrompt = buildUserPrompt(candidatesSent, harvestedAt);
   let leads: any[] = [];
   let nimText = '';
+  let nimRaw: any = null;
+  let nimError: string | null = null;
+  let nimErrorStack: string | null = null;
+  let reachedPhase3 = false;
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
-    const userPrompt = buildUserPrompt(candidates.slice(0, 8), harvestedAt);
-    nimText = await callNim(SYSTEM_PROMPT, userPrompt, env);
+    reachedPhase3 = true;
+    const result = await callNim(SYSTEM_PROMPT, userPrompt, env);
+    nimText = result.text;
+    nimRaw = result.raw;
     nimCalls++;
     leads = extractJsonArray(nimText);
   } catch (e: any) {
     const errMsg = String(e?.message ?? e);
-    const errStack = String(e?.stack ?? '');
+    nimError = errMsg;
+    nimErrorStack = String(e?.stack ?? '').slice(0, 2000);
     await logIntel(env, { event: 'nim_failed', session_id: sessionId, error: errMsg });
-    // Diagnostic: include raw NIM text preview so we can see what came back.
+    leads = [];
+  }
+
+  // OPS-LOCKE-ANALYZER-TUNING — full analyzer trace, every fire. Captures the
+  // model's input (system + user prompts + 8 candidates) and output (raw
+  // envelope + extracted text + parsed leads + any error). This supersedes
+  // the prior _drafts/nim-error-{sessionId}.json (parse-failure-only, 5000-char
+  // preview). Best-effort write — never fail the hunt on diagnostic disk i/o.
+  if (reachedPhase3) {
     try {
       await writeBrain(
-        `${env.BRAIN_PATH}/_drafts/nim-error-${sessionId}.json`,
+        `${env.BRAIN_PATH}/_drafts/analyzer-trace-${sessionId}.json`,
         JSON.stringify({
           session_id: sessionId,
-          error: errMsg,
-          stack: errStack.slice(0, 2000),
-          nim_text_length: nimText.length,
-          nim_text_preview: nimText.slice(0, 5000),
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          model: env.NIM_MODEL,
+          slice_indices: [0, 8],
+          candidates_scanned_total: candidates.length,
+          candidates_sent_count: candidatesSent.length,
+          candidates_sent: candidatesSent,
+          system_prompt: SYSTEM_PROMPT,
+          user_prompt: userPrompt,
+          raw_response: nimRaw,
+          extracted_text: nimText,
+          extracted_text_length: nimText.length,
+          leads_parsed: leads,
+          leads_parsed_count: leads.length,
+          nim_error: nimError,
+          nim_error_stack: nimErrorStack,
+          notes: 'OPS-LOCKE-ANALYZER-TUNING diagnostic capture — model input/output for empty-leads disambiguation'
         }, null, 2),
-        `locke-harvest debug: nim error ${sessionId}`,
+        `locke-harvest analyzer trace: ${sessionId} (${leads.length} parsed, error=${nimError ?? 'none'})`,
         env
       );
-    } catch (_) { /* best-effort */ }
-    leads = [];
+    } catch (_) { /* best-effort — diagnostics must never fail the hunt */ }
   }
 
   // Validate + write
