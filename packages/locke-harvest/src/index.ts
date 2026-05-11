@@ -74,29 +74,21 @@ const HUNT_CLUSTERS: Record<string, string[]> = {
 const HUNT_QUERIES: Array<{ theme: string; query: string }> = Object.entries(HUNT_CLUSTERS)
   .flatMap(([theme, queries]) => queries.map(query => ({ theme, query })));
 
-const SYSTEM_PROMPT = `You are Locke Lamora, the Thorn of Camorr — Tyler's autonomous demand signal hunter.
-You read forum threads as a thief reads a tavern: looking for marks, listening for pain.
-Your job: extract structured product opportunity data from raw search results.
+const SYSTEM_PROMPT = `You are Locke Lamora, Tyler's demand-signal hunter. Extract product opportunities from search results.
 
 Rules:
-- Focus on PAIN, not features
-- Profile WHO is hurting (role, industry, budget signals)
-- Identify existing solutions and WHY they fail
-- Be brutally honest about signal strength. One person complaining is not a market
-- Flag Long Con patterns: same pain across different communities
-- Populate the evidence[] array per LOCKE-OUTPUT-SCHEMA v1.1 §2. One entry per
-  thread you actually used, with thread_url + community + snippet + harvested_at
-  + pattern_signal. Community values follow §2 format
-  (reddit | reddit:r/<name> | hn | lobsters | indiehackers | other:<host>).
-- Self-enforce pattern_type per §3 against your own evidence ledger:
-  * "single_signal" if evidence.length == 1 OR all communities identical
-  * "repeated" requires length ≥ 3, ≥ 2 distinct communities, all corroborates
-  * "long_con" requires length ≥ 5 with ≥ 3 distinct communities (or ≥ 2
-    distinct communities spanning > 30 days)
-  Any "contradicts" or "orthogonal" entry forces "single_signal". If the
-  evidence doesn't earn the stronger tier, mark it lower honestly.
+- PAIN over features. Profile WHO hurts (role, industry, budget).
+- Identify existing solutions + why they fail.
+- Be honest: one complaint ≠ a market. Cross-community patterns matter.
+- evidence[] per LOCKE-OUTPUT-SCHEMA v1.1 §2: one entry per used thread with {thread_url, community, snippet, harvested_at, pattern_signal}. community ∈ {reddit, reddit:r/<name>, hn, lobsters, indiehackers, other:<host>}.
+- pattern_type per §3 against your evidence:
+  * single_signal: length=1 OR all communities identical
+  * repeated: length≥3 AND ≥2 distinct communities AND all corroborates
+  * long_con: length≥5 with ≥3 distinct (or ≥2 distinct spanning >30d)
+  * any contradicts/orthogonal → single_signal
+- Mark lower if evidence doesn't earn higher.
 
-Return ONLY a JSON array of leads. No prose. No markdown fences. No commentary. No <think> blocks in your final output.`;
+Return ONLY a JSON array. No prose. No fences. No <think>.`;
 
 function buildUserPrompt(
   results: Array<{ url: string; title: string; snippet: string; theme: string }>,
@@ -110,28 +102,21 @@ function buildUserPrompt(
     snippet: (r.snippet || '').slice(0, 240),
     theme: r.theme
   }));
-  return `Analyze these search results for product demand signals.
+  return `Analyze candidates for product demand signals. Each candidate carries its theme cluster (manual_process_pain | build_vs_buy_friction | current_solution_failures | mvp_validation_signals | growth_bottleneck).
 
-Each candidate is annotated with the THEME cluster that surfaced it:
-- manual_process_pain — people doing painful work by hand
-- build_vs_buy_friction — people who rolled their own because no tool fit
-- current_solution_failures — people churning from existing tools
-- mvp_validation_signals — indie hackers sharing what worked at low MRR
-- growth_bottleneck — solo founders stuck on a scaling problem
-
-Candidates (with theme):
+Candidates:
 ${JSON.stringify(trimmed, null, 2)}
 
-For each potential opportunity (max 5), return JSON matching this exact shape:
+For each opportunity (max 5), return JSON matching exactly:
 {
-  "lead_id": "kebab-slug-3-to-64-chars",
+  "lead_id": "kebab-3-to-64-chars",
   "source_threads": [{"url":"...","platform":"reddit","title":"...","upvotes":0,"comment_count":0,"harvested_at":"ISO8601"}],
-  "mark_profile": "20-200 chars, who is hurting + budget signal (avoid 'everyone' / 'all developers')",
-  "pain_statement": "30-300 chars, specific manual or painful action",
+  "mark_profile": "20-200 chars: who hurts + budget signal (avoid 'everyone'/'all developers')",
+  "pain_statement": "30-300 chars, specific",
   "pain_frequency": "daily|weekly|monthly|once",
   "pain_intensity": "annoying|painful|critical",
   "existing_solutions": [{"name":"X","weakness":"why it fails","signals":["quote"]}],
-  "angle": "30-400 chars, what a simple product would look like",
+  "angle": "30-400 chars, what a simple product looks like",
   "estimated_price": "$X.XX/mo",
   "market_size_signal": "niche|solid|large",
   "confidence": "low|medium|high|dead_certain",
@@ -139,33 +124,21 @@ For each potential opportunity (max 5), return JSON matching this exact shape:
   "thread_count": 0,
   "total_upvotes": 0,
   "related_leads": [],
-  "locke_notes": "30-300 chars, your one-liner in Locke's voice",
+  "locke_notes": "30-300 chars in Locke's voice",
   "evidence": [
     {
-      "thread_url": "https://...",
-      "community": "reddit:r/SaaS | reddit | hn | lobsters | indiehackers | other:<host>",
-      "snippet": "exact quote ≤500 chars that signals the pain",
+      "thread_url": "https://... (MUST come from candidates above)",
+      "community": "reddit:r/<name> | reddit | hn | lobsters | indiehackers | other:<host>",
+      "snippet": "1-500 char exact quote signaling the pain",
       "harvested_at": "${harvestedAt}",
-      "pattern_signal": "corroborates | contradicts | orthogonal"
+      "pattern_signal": "corroborates|contradicts|orthogonal"
     }
   ]
 }
 
-evidence[] is REQUIRED (≥ 1 entry) per LOCKE-OUTPUT-SCHEMA v1.1 §2. Each entry:
-- thread_url MUST be a URL drawn from the candidates above (no fabrication)
-- community uses the §2 enum format; prefer subreddit-scoped (reddit:r/<name>) over bare "reddit"
-- snippet is a 1–500 char exact quote/paraphrase from the candidate that signals the pain
-- harvested_at reuses the session timestamp ("${harvestedAt}") for current-fire evidence
-- pattern_signal ∈ {corroborates, contradicts, orthogonal}
-No duplicate thread_url within one lead's evidence[].
+evidence[]: ≥1 entry. No duplicate thread_url per lead. pattern_type enforced per §3.
 
-pattern_type rules (§3 — enforce against your own evidence):
-- "single_signal": evidence.length == 1 OR all evidence[].community values identical
-- "repeated": evidence.length ≥ 3 AND ≥ 2 distinct communities AND all corroborates
-- "long_con": (evidence.length ≥ 5 AND ≥ 3 distinct communities) OR (≥ 2 distinct communities AND harvested_at spans > 30 days)
-- Any "contradicts" or "orthogonal" entry downgrades the lead to "single_signal"
-
-Return ONLY a JSON array. Return [] if no real signal found. Honest beats fabricated.`;
+Return ONLY a JSON array. [] if no real signal. Honest beats fabricated.`;
 }
 
 async function logIntel(env: Env, event: Record<string, any>): Promise<void> {
@@ -432,16 +405,18 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only).
   // harvestedAt is used both by buildUserPrompt (as the suggested evidence[].harvested_at)
   // and below as the lead-level harvested_at — single timestamp per session.
-  // Slice 0,6: halved from 0,12 on 2026-05-11 revert. Keeps NIM input payload ~50% smaller
-  // for ~50–80s margin under NVIDIA's ~145s edge timeout. Quality is preserved because the
-  // theme clusters already provide cross-community diversity at the candidate-pool level —
-  // the analyzer doesn't need 12 inputs to find 2–3 corroborated leads.
+  // Slice 0,4: halved-again from 0,6 on 2026-05-11 (the-prism C3 NIM 524 retrace).
+  // Combined with trimmed SYSTEM_PROMPT + trimmed buildUserPrompt to clear NVIDIA's
+  // ~145s edge timeout. With 4 candidates (~1.6KB JSON) + ~700-char system + ~1.7KB
+  // user template, total prompt is ~50% smaller than 2026-05-11 first revert.
+  // Cross-community diversity is preserved at the candidate-pool level by HUNT_CLUSTERS
+  // ordering — first 4 dedup'd candidates typically span ≥2 communities.
   const harvestedAt = new Date().toISOString();
   let leads: any[] = [];
   let nimText = '';
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
-    const userPrompt = buildUserPrompt(candidates.slice(0, 6), harvestedAt);
+    const userPrompt = buildUserPrompt(candidates.slice(0, 4), harvestedAt);
     nimText = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimCalls++;
     leads = extractJsonArray(nimText);
