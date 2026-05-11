@@ -2,11 +2,17 @@
 // Trigger: POST /run?secret=X for manual fire (cron deferred — see wrangler.toml comment).
 // MVP scope: Phase 1 (SearXNG) + Phase 3 (NIM Nemotron-120B analysis). Phase 2 (Agent-Reach) deferred per C1 audit.
 // MVP dedup: in-memory only (per-invocation Set<string>). KV-backed cross-invocation dedup is post-MVP.
-// Analysis tier: NVIDIA NIM Nemotron-120B via OpenAI-compatible chat-completions (was Gemini Flash;
-// swapped 2026-05-07 to reuse Tyler's existing NIM access — vendor-independence + cost discipline).
+// Analysis tier: NVIDIA NIM Nemotron-120B via OpenAI-compatible chat-completions HTTP.
+//   2026-05-07: pivoted to Workers AI Kimi K2.6 binding to escape NVIDIA edge 524 ceiling.
+//   2026-05-11: reverted to NIM Nemotron-120B HTTP after Workers AI free-tier 10k neurons/day
+//     cap blocked the-prism/clue-3 smoke (other in-network consumers drained the quota).
+//     Edge-524 mitigation: candidates.slice(0,12) → slice(0,6) halves payload size for ~50–80s
+//     margin under NVIDIA's ~145s ceiling. Council still uses NIM HTTP successfully (per-judge
+//     prompts small), so substrate is known-working at this payload shape.
 
 interface Env {
-  AI: any;  // Workers AI binding (Kimi K2.6 in-network)
+  AI: any;  // Workers AI binding — declared but unused after 2026-05-11 NIM HTTP revert.
+            // Left wired so a future re-pivot to in-network inference is a code-only change.
   PERSONA: string;
   BRAIN_PATH: string;
   SEARXNG_URL: string;
@@ -194,27 +200,45 @@ async function searxngSearch(query: string, env: Env): Promise<Array<{ url: stri
 }
 
 async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
-  // Workers AI binding (in-network), Kimi K2.6 sync mode.
-  // Sync because: in-network calls don't need streaming for liveness (vs NVIDIA edge 524
-  // which forced streaming). Sync response is simpler and the result shape is documented.
-  const result: any = await env.AI.run(env.NIM_MODEL, {
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    temperature: 0.3,
-    max_tokens: 16384
+  // NVIDIA NIM Nemotron-120B via OpenAI-compatible chat-completions HTTP.
+  // Reverted 2026-05-11 from Workers AI Kimi K2.6 binding after free-tier 10k
+  // neurons/day was exhausted by upstream consumers, blocking the-prism/clue-3.
+  // Sync (stream:false) — the 524 mitigation here is payload-size reduction
+  // (candidates.slice(0,12) → slice(0,6) in runHunt) not transport tricks.
+  // max_tokens 6144: enough headroom for Nemotron <think> reasoning + 2–3 leads
+  // of v1.1 JSON (each ~600 tok with evidence[]); historical 4096 was sized
+  // for the pre-v1.1 lead shape without evidence arrays.
+  const r = await fetch(env.NIM_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${env.NIM_API_KEY}`,
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      model: env.NIM_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 6144,
+      stream: false
+    })
   });
-  // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] } OpenAI-compat
-  // Capture both + a raw-keys fallback for unanticipated shapes.
+  if (!r.ok) {
+    const errText = await r.text().catch(() => '');
+    throw new Error(`NIM ${r.status}: ${errText.slice(0, 400)}`);
+  }
+  const data: any = await r.json();
+  // OpenAI-compatible response shape. Nemotron emits <think>...</think> blocks
+  // inline in content; extractJsonArray strips them downstream.
   const text =
-    (typeof result?.response === 'string' && result.response) ||
-    result?.choices?.[0]?.message?.content ||
-    result?.result?.response ||
+    data?.choices?.[0]?.message?.content ||
+    data?.choices?.[0]?.text ||
     '';
   if (!text) {
-    // Surface the actual shape into the error path via JSON-serialized keys preview
-    throw new Error(`AI binding empty: keys=${Object.keys(result || {}).join(',')} | preview=${JSON.stringify(result).slice(0, 600)}`);
+    throw new Error(`NIM empty: keys=${Object.keys(data || {}).join(',')} | preview=${JSON.stringify(data).slice(0, 600)}`);
   }
   return text;
 }
@@ -405,15 +429,19 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     return { kept: 0, discarded: 0, status: 'no_signal', session_id: sessionId };
   }
 
-  // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only)
+  // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only).
   // harvestedAt is used both by buildUserPrompt (as the suggested evidence[].harvested_at)
   // and below as the lead-level harvested_at — single timestamp per session.
+  // Slice 0,6: halved from 0,12 on 2026-05-11 revert. Keeps NIM input payload ~50% smaller
+  // for ~50–80s margin under NVIDIA's ~145s edge timeout. Quality is preserved because the
+  // theme clusters already provide cross-community diversity at the candidate-pool level —
+  // the analyzer doesn't need 12 inputs to find 2–3 corroborated leads.
   const harvestedAt = new Date().toISOString();
   let leads: any[] = [];
   let nimText = '';
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
-    const userPrompt = buildUserPrompt(candidates.slice(0, 12), harvestedAt);
+    const userPrompt = buildUserPrompt(candidates.slice(0, 6), harvestedAt);
     nimText = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimCalls++;
     leads = extractJsonArray(nimText);
