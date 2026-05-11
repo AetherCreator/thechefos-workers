@@ -101,6 +101,7 @@ Rules:
 - Identify existing solutions + why they fail.
 - Be honest: one complaint ≠ a market. Cross-community patterns matter.
 - evidence[] per LOCKE-OUTPUT-SCHEMA v1.1 §2: one entry per used thread with {thread_url, community, snippet, harvested_at, pattern_signal}. community ∈ {reddit, reddit:r/<name>, hn, lobsters, indiehackers, other:<host>}.
+- evidence[] coherence (OPS-LOCKE-EVIDENCE-COHERENCE): every corroborates entry must describe the SAME specific pain — same user role, same workflow, same broken state. Threads sharing only a topic keyword ("manual", "automate", "tedious", "slow") across unrelated domains (e.g. video games + sysadmin scripting + news curation) are NOT corroborating evidence; mark such threads orthogonal or omit them. A buyer for this product is one person, not three different personas with three different needs.
 - pattern_type per §3 against your evidence:
   * single_signal: length=1 OR all communities identical
   * repeated: length≥3 AND ≥2 distinct communities AND all corroborates
