@@ -240,11 +240,17 @@ async function callJudge(
     });
     // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] }
     // OpenAI-compat. Kimi K2.6 returns OpenAI-compat by default.
-    const text =
-      (typeof result?.response === 'string' && result.response) ||
+    //
+    // Defensive: any of the three paths may return a native JS array/object rather than
+    // a stringified payload when the model is prompted for structured output. Mirror of
+    // Locke commit 776971f0 (workers-ai-native-array-output gotcha). See
+    // brain/02-knowledge/workers-ai-native-array-output.md.
+    const rawText =
+      result?.response ||
       result?.choices?.[0]?.message?.content ||
       result?.result?.response ||
       '';
+    const text = typeof rawText === 'string' ? rawText : JSON.stringify(rawText);
     if (!text) {
       throw new Error(`AI binding empty: keys=${Object.keys(result || {}).join(',')} | preview=${JSON.stringify(result).slice(0, 400)}`);
     }
