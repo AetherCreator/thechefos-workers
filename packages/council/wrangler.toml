@@ -12,7 +12,7 @@ account_id = "cc231edbff18405233612d7afb657f1f"
 [vars]
 PERSONA = "council"
 COUNCIL_SCHEMA_VERSION = "council-1.0"
-SUPPORTED_LEAD_VERSIONS = "[\"locke-1.0\"]"
+SUPPORTED_LEAD_VERSIONS = "locke-1.0,locke-1.1"
 # 2026-05-10: pre-filter loosened to accept all Locke output. Council's 95.0
 # geometric mean + Foundry canary gate are the actual quality gates. Kept as
 # schema-version guard only; expand if Locke produces calibrated discrimination.
