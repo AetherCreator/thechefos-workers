@@ -6,17 +6,21 @@
 //   2026-05-07: pivoted to Workers AI Kimi K2.6 binding to escape NVIDIA edge 524 ceiling.
 //   2026-05-11: reverted to NIM Nemotron-120B HTTP after Workers AI free-tier 10k neurons/day
 //     cap blocked the-prism/clue-3 smoke (other in-network consumers drained the quota).
-//     Edge-524 mitigation: candidates.slice(0,12) → slice(0,6) halves payload size for ~50–80s
-//     margin under NVIDIA's ~145s ceiling. Council still uses NIM HTTP successfully (per-judge
-//     prompts small), so substrate is known-working at this payload shape.
+//     Edge-524 mitigation: candidates.slice(0,12) → slice(0,6) → slice(0,4) over the day plus
+//     trimmed SYSTEM/user prompts for margin under NVIDIA's ~145s ceiling.
+//   2026-05-11 (evening): SearXNG eliminated. After 3 iterative fires burned all 6 engines
+//     (brave/google/bing/ddg/mojeek/startpage all in suspension/CAPTCHA), pivoted to hybrid
+//     adapter system in ./searchAdapters.ts — Reddit native search.json + HN Algolia + Brave
+//     Search API fallback. SEARXNG_URL/SEARXNG_ENGINES env vars retired. Per-query intel_log
+//     batched into one phase1_summary call to drop total /run subreq count from ~50 to ~28.
+
+import { search as adapterSearch, routeFor } from './searchAdapters';
 
 interface Env {
   AI: any;  // Workers AI binding — declared but unused after 2026-05-11 NIM HTTP revert.
             // Left wired so a future re-pivot to in-network inference is a code-only change.
   PERSONA: string;
   BRAIN_PATH: string;
-  SEARXNG_URL: string;
-  SEARXNG_ENGINES: string;        // comma-separated engine list — pin to engines that don't bot-block
   INTEL_LOG_URL: string;
   BRAIN_WRITE_URL: string;
   NIM_URL: string;
@@ -30,6 +34,7 @@ interface Env {
   NIM_API_KEY: string;
   BRAIN_WRITE_SECRET: string;
   HARVEST_RUN_SECRET: string;
+  BRAVE_SEARCH_API_KEY: string;   // Brave Search API token (free tier 2k/mo)
 }
 
 // Theme clusters per prompts/LOCKE-THEME-CLUSTERS.md (the-prism clue-1).
@@ -152,24 +157,6 @@ async function logIntel(env: Env, event: Record<string, any>): Promise<void> {
     // intel_log is best-effort; never fail the hunt because telemetry is down
     console.warn('intel_log failed:', e);
   }
-}
-
-async function searxngSearch(query: string, env: Env): Promise<Array<{ url: string; title: string; content: string }>> {
-  const url = new URL(env.SEARXNG_URL);
-  url.searchParams.set('q', query);
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('safesearch', '0');
-  // Pin engines to avoid the CAPTCHA/access-denied tax of free meta-search engines
-  // (DDG/Qwant/Karmasearch/Startpage all bot-block under burst load). Brave + Bing
-  // are typically the most reliable for our `site:reddit.com` query shape; tunable
-  // from wrangler.toml without code changes.
-  if (env.SEARXNG_ENGINES) {
-    url.searchParams.set('engines', env.SEARXNG_ENGINES);
-  }
-  const r = await fetch(url.toString(), { headers: { 'User-Agent': 'locke-harvest/1.0' } });
-  if (!r.ok) throw new Error(`SearXNG ${r.status}`);
-  const data: any = await r.json();
-  return (data.results || []).slice(0, 10);
 }
 
 async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<string> {
@@ -371,13 +358,20 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   const candidates: Array<{ url: string; title: string; snippet: string; theme: string }> = [];
   let nimCalls = 0;
 
-  // Phase 1 — SearXNG meta-search across 5 themed clusters (20 queries total).
+  // Phase 1 — hybrid adapter dispatch across 5 themed clusters (20 queries total).
   // Each candidate carries its source theme so the analyzer can populate
   // evidence[].pattern_signal correctly per LOCKE-OUTPUT-SCHEMA v1.1 §3.
+  // Per-query events accumulate in-memory and flush as one phase1_summary
+  // logIntel call at end — keeps total /run subreq count under CF 50-cap.
+  const queryEvents: any[] = [];
+  let queriesSucceeded = 0;
+  let queriesFailed = 0;
   let queryIdx = 0;
+  let budgetExhausted = false;
   for (const { theme, query } of HUNT_QUERIES) {
     if (Date.now() - startedAt > wallClockBudget) {
-      await logIntel(env, { event: 'budget_exhausted', reason: 'wall_clock_phase1', session_id: sessionId });
+      budgetExhausted = true;
+      queryEvents.push({ theme, query, status: 'skipped_budget' });
       break;
     }
     if (queryIdx > 0 && perQuerySleep > 0) {
@@ -385,17 +379,30 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     }
     queryIdx++;
     try {
-      const results = await searxngSearch(query, env);
-      await logIntel(env, { event: 'query_executed', session_id: sessionId, theme, query, count: results.length });
+      const results = await adapterSearch(query, env);
+      queriesSucceeded++;
+      queryEvents.push({ theme, query, adapter: routeFor(query), count: results.length, status: 'ok' });
       for (const r of results) {
         if (!r.url || seenUrls.has(r.url)) continue;
         seenUrls.add(r.url);
         candidates.push({ url: r.url, title: r.title || '', snippet: r.content || '', theme });
       }
     } catch (e: any) {
-      await logIntel(env, { event: 'query_failed', session_id: sessionId, theme, query, error: String(e?.message ?? e) });
+      queriesFailed++;
+      queryEvents.push({ theme, query, adapter: routeFor(query), status: 'error', error: String(e?.message ?? e).slice(0, 200) });
     }
   }
+  // Batch flush — one subreq instead of 20-40
+  await logIntel(env, {
+    event: 'phase1_summary',
+    session_id: sessionId,
+    queries_total: queryIdx,
+    queries_succeeded: queriesSucceeded,
+    queries_failed: queriesFailed,
+    budget_exhausted: budgetExhausted,
+    candidates_after_dedup: candidates.length,
+    events: queryEvents
+  });
 
   if (candidates.length < 3) {
     await logIntel(env, { event: 'harvest_complete', session_id: sessionId, status: 'no_signal', kept: 0, discarded: 0 });
@@ -508,7 +515,7 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/health') {
-      return Response.json({ ok: true, persona: env.PERSONA, schema: env.SCHEMA_VERSION, model: env.NIM_MODEL, engines: env.SEARXNG_ENGINES || 'all' });
+      return Response.json({ ok: true, persona: env.PERSONA, schema: env.SCHEMA_VERSION, model: env.NIM_MODEL, search_adapters: 'reddit+hn+brave (hybrid v2)' });
     }
     if (url.pathname === '/run' && request.method === 'POST') {
       const secret = url.searchParams.get('secret') ?? request.headers.get('x-harvest-secret');
