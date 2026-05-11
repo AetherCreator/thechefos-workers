@@ -412,18 +412,21 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   // Phase 3 — NIM Nemotron-120B analysis (Phase 2 Agent-Reach deferred; we send title+snippet only).
   // harvestedAt is used both by buildUserPrompt (as the suggested evidence[].harvested_at)
   // and below as the lead-level harvested_at — single timestamp per session.
-  // Slice 0,4: halved-again from 0,6 on 2026-05-11 (the-prism C3 NIM 524 retrace).
-  // Combined with trimmed SYSTEM_PROMPT + trimmed buildUserPrompt to clear NVIDIA's
-  // ~145s edge timeout. With 4 candidates (~1.6KB JSON) + ~700-char system + ~1.7KB
-  // user template, total prompt is ~50% smaller than 2026-05-11 first revert.
-  // Cross-community diversity is preserved at the candidate-pool level by HUNT_CLUSTERS
-  // ordering — first 4 dedup'd candidates typically span ≥2 communities.
+  // Slice 0,3: dropped from 0,4 on 2026-05-11 evening after second NIM 524 hit
+  // post-adapter-pivot. Even slice(0,4) + trimmed prompts didn't clear NVIDIA's
+  // ~145s edge ceiling — Nemotron-120B's <think> reasoning eats variable time.
+  // 3 candidates is the floor: pattern_type:repeated requires evidence.length≥3
+  // AND ≥2 distinct communities, so analyzer must use ALL 3 entries from ≥2
+  // distinct sources (e.g. two subreddits + one HN, or three different subreddits
+  // when the Reddit adapter returns hits from /r/SaaS, /r/jobs, /r/startups etc).
+  // If this still 524s, the answer is model swap (Llama-3.3-70b-fast or Kimi K2.6
+  // post-daily-reset), not further slice reduction.
   const harvestedAt = new Date().toISOString();
   let leads: any[] = [];
   let nimText = '';
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
-    const userPrompt = buildUserPrompt(candidates.slice(0, 4), harvestedAt);
+    const userPrompt = buildUserPrompt(candidates.slice(0, 3), harvestedAt);
     nimText = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimCalls++;
     leads = extractJsonArray(nimText);
