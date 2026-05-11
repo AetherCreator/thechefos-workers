@@ -97,11 +97,30 @@ const HUNT_QUERIES: Array<{ theme: string; query: string }> = Object.entries(HUN
 const SYSTEM_PROMPT = `You are Locke Lamora, Tyler's demand-signal hunter. Extract product opportunities from search results.
 
 Rules:
-- PAIN over features. Profile WHO hurts (role, industry, budget).
-- Identify existing solutions + why they fail.
-- Be honest: one complaint ≠ a market. Cross-community patterns matter.
-- evidence[] per LOCKE-OUTPUT-SCHEMA v1.1 §2: one entry per used thread with {thread_url, community, snippet, harvested_at, pattern_signal}. community ∈ {reddit, reddit:r/<name>, hn, lobsters, indiehackers, other:<host>}.
-- evidence[] coherence (OPS-LOCKE-EVIDENCE-COHERENCE): every corroborates entry must describe the SAME specific pain — same user role, same workflow, same broken state. Threads sharing only a topic keyword ("manual", "automate", "tedious", "slow") across unrelated domains (e.g. video games + sysadmin scripting + news curation) are NOT corroborating evidence; mark such threads orthogonal or omit them. A buyer for this product is one person, not three different personas with three different needs.
+- PAIN over features. Profile WHO hurts (role, industry, budget). Identify existing solutions + why they fail.
+- Be honest: one complaint ≠ a market. Cross-community patterns matter. Honest beats fabricated.
+- evidence[] per LOCKE-OUTPUT-SCHEMA v1.2 §2: {thread_url, community, snippet, harvested_at, pattern_signal, pain_match}. community: reddit | reddit:r/<name> | hn | lobsters | indiehackers | other:<host>. HN-linked GitHub repos use other:github.com. Use exactly the harvested_at value provided in the schema example below; never invent timestamps.
+
+- evidence[].pain_match (REQUIRED, 30-200 chars) is how you prove coherence. State the role, workflow, and broken state of the thread's user, and how they match the lead's pain_statement. If you cannot write a coherent pain_match that ties to the lead's pain_statement, the entry is NOT corroborates.
+
+- pattern_signal selection (STRUCTURAL — driven by pain_match):
+  * corroborates → pain_match articulates SAME role, SAME workflow, SAME broken state as the lead's pain_statement
+  * orthogonal → related theme but different role/workflow/state (do not let topic keywords like "manual", "automate", "slow", "tedious" deceive you across unrelated domains)
+  * contradicts → opposite outcome or refuted premise
+
+WORKED EXAMPLES:
+
+OK (corroborates ×3 → repeated):
+  Lead pain_statement: "Solo SaaS founders losing 6+ hrs/week to support tickets"
+  Evidence A pain_match: "Solo SaaS founder; workflow=customer support; broken state=6h/week reconciling tickets. Match."
+  Evidence B pain_match: "Solo SaaS founder on r/SaaS; workflow=support tickets; broken state=50+/day eating focus. Match."
+  Evidence C pain_match: "Bootstrapped SaaS solo dev; workflow=customer support; broken state=weekend hours lost to tickets. Match."
+
+NOT OK (intra-theme but incoherent — fire 10 failure pattern):
+  Lead pain_statement: "Solo bootstrapped founders scaling team beyond one person"
+  Evidence A pain_match: "Solo founder asks how to scale from 1-person to bigger team — direct match." → corroborates
+  Evidence B (about churn): "App maker asks how to reduce app churn. Different role (app maker not founder), different workflow (retention not hiring), different broken state. NOT coherent with scaling team." → orthogonal
+
 - pattern_type per §3 against your evidence:
   * single_signal: length=1 OR all communities identical
   * repeated: length≥3 AND ≥2 distinct communities AND all corroborates
@@ -109,7 +128,7 @@ Rules:
   * any contradicts/orthogonal → single_signal
 - Mark lower if evidence doesn't earn higher.
 
-Return ONLY a JSON array. No prose. No fences. No <think>.`;
+Return ONLY a JSON array. [] if no real signal. No prose. No fences. No <think>.`;
 
 function buildUserPrompt(
   results: Array<{ url: string; title: string; snippet: string; theme: string }>,
@@ -152,12 +171,13 @@ For each opportunity (max 5), return JSON matching exactly:
       "community": "reddit:r/<name> | reddit | hn | lobsters | indiehackers | other:<host>",
       "snippet": "1-500 char exact quote signaling the pain",
       "harvested_at": "${harvestedAt}",
-      "pattern_signal": "corroborates|contradicts|orthogonal"
+      "pattern_signal": "corroborates|contradicts|orthogonal",
+      "pain_match": "30-200 chars: how this thread's role+workflow+broken_state matches the lead's pain_statement"
     }
   ]
 }
 
-evidence[]: ≥1 entry. No duplicate thread_url per lead. pattern_type enforced per §3.
+evidence[]: ≥1 entry. No duplicate thread_url per lead. Every entry MUST include pain_match. Use exactly "${harvestedAt}" for evidence[].harvested_at — do NOT generate dates. pattern_type enforced per §3.
 
 Return ONLY a JSON array. [] if no real signal. Honest beats fabricated.`;
 }
@@ -230,6 +250,30 @@ const COMMUNITY_REGEX = /^(reddit(:r\/[a-zA-Z0-9_]+)?|hn|lobsters|indiehackers|o
 const PATTERN_SIGNAL_ENUM = new Set(['corroborates', 'contradicts', 'orthogonal']);
 const PATTERN_TYPE_RANK: Record<string, number> = { single_signal: 1, repeated: 2, long_con: 3 };
 
+// pain_match coherence helpers — LOCKE-OUTPUT-SCHEMA v1.2 §7.
+// Forces the analyzer's per-evidence reasoning to share content words with the
+// lead's pain_statement when claiming `corroborates`. Cheap structural check
+// that closes the intra-theme incoherence loophole that Pass 1 of the prompt
+// revision left open (OPS-LOCKE-EVIDENCE-COHERENCE).
+const STOPWORDS = new Set(['the','a','an','and','or','but','of','in','on','at','to','for','with','by','from','as','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','must','can','this','that','these','those','it','its','they','them','their','i','me','my','we','us','our','you','your','he','him','his','she','her','about','if','then','than','also','not','no','so','too','very','just','more','most','some','any','all','each','every']);
+
+function contentWords(text: string): Set<string> {
+  return new Set(
+    (text || '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(w => w.length >= 3 && !STOPWORDS.has(w))
+  );
+}
+
+function painMatchOverlap(painMatch: string, painStatement: string): number {
+  const matchWords = contentWords(painMatch);
+  const stmtWords = contentWords(painStatement);
+  let overlap = 0;
+  for (const w of matchWords) if (stmtWords.has(w)) overlap++;
+  return overlap;
+}
+
 function isValidLead(lead: any): { ok: boolean; reason?: string } {
   if (!lead || typeof lead !== 'object') return { ok: false, reason: 'not-object' };
   const required = ['lead_id', 'source_threads', 'mark_profile', 'pain_statement', 'pain_frequency',
@@ -263,6 +307,19 @@ function isValidLead(lead: any): { ok: boolean; reason?: string } {
     if (typeof e.snippet !== 'string' || e.snippet.length < 1 || e.snippet.length > 500) return { ok: false, reason: `evidence[${i}].snippet-length` };
     if (typeof e.harvested_at !== 'string' || !e.harvested_at) return { ok: false, reason: `evidence[${i}].harvested_at-missing` };
     if (typeof e.pattern_signal !== 'string' || !PATTERN_SIGNAL_ENUM.has(e.pattern_signal)) return { ok: false, reason: `evidence[${i}].pattern_signal-enum` };
+    // v1.2 §7 — pain_match required for all entries; corroborates entries must
+    // share ≥2 content words with the lead's pain_statement (coherence heuristic)
+    if (typeof e.pain_match !== 'string' || !e.pain_match) {
+      return { ok: false, reason: `evidence[${i}].pain_match-missing` };
+    }
+    if (e.pain_match.length < 30 || e.pain_match.length > 200) {
+      return { ok: false, reason: `evidence[${i}].pain_match-length` };
+    }
+    if (e.pattern_signal === 'corroborates') {
+      if (painMatchOverlap(e.pain_match, lead.pain_statement) < 2) {
+        return { ok: false, reason: `evidence[${i}].pain_match-incoherent` };
+      }
+    }
   }
 
   // Decision-rule enforcement per §3. Compute the strongest pattern_type the
