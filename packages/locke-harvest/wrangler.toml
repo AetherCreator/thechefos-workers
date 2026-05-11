@@ -14,33 +14,31 @@ crons = ["0 0 * * SUN"]
 [vars]
 PERSONA = "locke-lamora"
 BRAIN_PATH = "brain/05-leads"
-SEARXNG_URL = "https://searxng.thechefos.app/search"
-# Engine portfolio — widened 2026-05-11 (the-prism/clue-3) after `brave,google`
-# duo bot-suspended Brave inside one 20-query burst at 12:33Z, leaving Google
-# silently returning 0 on `site:reddit.com`. Six engines give SearXNG enough
-# redundancy that one bot-block doesn't tank Phase 1. Most of these CAPTCHA on
-# burst load (per 2026-05-07 §B4) — the 8s PER_QUERY_SLEEP_MS below is what
-# actually prevents re-suspension; this list is the recovery surface.
-SEARXNG_ENGINES = "brave,google,bing,duckduckgo,mojeek,startpage"
+# SearXNG removed 2026-05-11 (the-prism C3 post-mortem). Replaced by hybrid
+# adapter system in src/searchAdapters.ts: Reddit native search.json + HN
+# Algolia Search API + Brave Search API fallback. Burst-load tolerance via
+# real APIs that want to be called, not engine scrapers that bot-block.
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 # Analysis tier: NIM Nemotron-120B via OpenAI-compatible chat-completions HTTP.
 #   2026-05-07: pivoted to Workers AI Kimi K2.6 binding (NIM_MODEL was @cf/moonshotai/kimi-k2.6).
-#   2026-05-11: reverted to NIM Nemotron-120B HTTP after Workers AI free-tier 10k neurons/day
-#     cap blocked the-prism/clue-3 smoke. NIM_URL unchanged; NIM_MODEL flipped back to NIM ID.
+#   2026-05-11 (afternoon): reverted to NIM Nemotron-120B HTTP after Workers AI free-tier 10k
+#     neurons/day cap blocked the-prism/clue-3 smoke. NIM_URL unchanged; NIM_MODEL flipped.
+#   2026-05-11 (evening): trimmed NIM payload (slice 0,4 + compressed prompts) for the ~145s
+#     NVIDIA edge ceiling. Holding here for v2 adapter validation.
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NIM_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 SCHEMA_VERSION = "locke-1.1"
 MAX_LEADS_PER_RUN = "5"
 WALL_CLOCK_BUDGET_MS = "480000"
 NIM_BUDGET = "50"
-# Per-query sleep bumped 2s→8s 2026-05-11 (the-prism/clue-3). 2s was insufficient
-# to keep Brave under its bot-block threshold across 20 queries — suspension
-# observed at 12:33Z lasted >17 min and persisted into the 12:50Z refire. 8s × 20
-# queries = 160s of spacing, well under the 480s wall budget, and per-query
-# spacing >> any individual engine's per-IP cooldown window. Total Phase 1 wall
-# ~200–220s, NIM ~80–130s, total fire ~300–350s ≪ 480s budget.
-PER_QUERY_SLEEP_MS = "8000"
+# Per-query sleep lowered 8000→1500ms 2026-05-11 evening (adapter pivot).
+# Original 8s was burst-protection against SearXNG's bot-blocked engine pool.
+# Direct API targets (Reddit anon: 60/min, HN Algolia: very generous, Brave free:
+# 1 q/sec) tolerate ~1.5s spacing comfortably. 1500ms × 20 queries = 30s spacing
+# total. Phase 1 wall now ~40-60s (vs prior 200-220s), NIM ~80-130s, total fire
+# ~120-200s ≪ 480s budget — leaves plenty of margin for slow-API quarters.
+PER_QUERY_SLEEP_MS = "1500"
 
 [ai]
 binding = "AI"
