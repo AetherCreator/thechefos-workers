@@ -15,11 +15,13 @@ crons = ["0 0 * * SUN"]
 PERSONA = "locke-lamora"
 BRAIN_PATH = "brain/05-leads"
 SEARXNG_URL = "https://searxng.thechefos.app/search"
-# Pin to engines that don't bot-block our `site:reddit.com`-style queries under
-# burst load. Tested 2026-05-07: brave is the only reliable free engine; DDG,
-# Qwant, Karmasearch, Startpage all return CAPTCHA / 403 / HTTP 400 to SearXNG
-# when fired in 10-query bursts. Tunable comma-list when others stabilize.
-SEARXNG_ENGINES = "brave,google"
+# Engine portfolio — widened 2026-05-11 (the-prism/clue-3) after `brave,google`
+# duo bot-suspended Brave inside one 20-query burst at 12:33Z, leaving Google
+# silently returning 0 on `site:reddit.com`. Six engines give SearXNG enough
+# redundancy that one bot-block doesn't tank Phase 1. Most of these CAPTCHA on
+# burst load (per 2026-05-07 §B4) — the 8s PER_QUERY_SLEEP_MS below is what
+# actually prevents re-suspension; this list is the recovery surface.
+SEARXNG_ENGINES = "brave,google,bing,duckduckgo,mojeek,startpage"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 # Analysis tier: NIM Nemotron-120B via OpenAI-compatible chat-completions HTTP.
@@ -32,7 +34,13 @@ SCHEMA_VERSION = "locke-1.1"
 MAX_LEADS_PER_RUN = "5"
 WALL_CLOCK_BUDGET_MS = "480000"
 NIM_BUDGET = "50"
-PER_QUERY_SLEEP_MS = "2000"
+# Per-query sleep bumped 2s→8s 2026-05-11 (the-prism/clue-3). 2s was insufficient
+# to keep Brave under its bot-block threshold across 20 queries — suspension
+# observed at 12:33Z lasted >17 min and persisted into the 12:50Z refire. 8s × 20
+# queries = 160s of spacing, well under the 480s wall budget, and per-query
+# spacing >> any individual engine's per-IP cooldown window. Total Phase 1 wall
+# ~200–220s, NIM ~80–130s, total fire ~300–350s ≪ 480s budget.
+PER_QUERY_SLEEP_MS = "8000"
 
 [ai]
 binding = "AI"
