@@ -10,7 +10,6 @@ export interface Env {
   STRIPE_API_KEY: string
   VERCEL_TOKEN: string
   VERCEL_PROJECT_ID: string
-  LINEAR_API_KEY: string
   BRAIN_WRITE: Fetcher
 }
 
@@ -124,54 +123,6 @@ app.post('/api/telegram', async (c) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message }),
-        })
-        return c.json({ ok: true })
-      }
-
-      // Grok Forge commands → forward to n8n Grok Harvester (Tyler only — triggers brain writes)
-      if (message.text!.startsWith('/idea ') && isTyler) {
-        const content = message.text!.slice(6).trim()
-        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🧠 Harvesting idea...')
-        await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'idea', content, chat_id: chatId }),
-        })
-        return c.json({ ok: true })
-      }
-
-      if (message.text!.startsWith('/dump ') && isTyler) {
-        const content = message.text!.slice(6).trim()
-        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🧠 Processing dump...')
-        await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'dump', content, chat_id: chatId }),
-        })
-        return c.json({ ok: true })
-      }
-
-      if (message.text === '/scan' && isTyler) {
-        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, '🔍 Running brain scan...')
-        await fetch('https://n8n.thechefos.app/webhook/grok-harvest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'scan', chat_id: chatId }),
-        })
-        return c.json({ ok: true })
-      }
-
-      // Researcher command → forward to n8n Researcher Agent (Tyler only)
-      if (message.text!.startsWith('/research ') && isTyler) {
-        const args = message.text!.slice(10).trim()
-        const topicMatch = args.match(/^"([^"]+)"\s*(.*)$/) || args.match(/^(\S+)\s*(.*)$/)
-        const topic = topicMatch ? topicMatch[1] : args
-        const depth = topicMatch?.[2]?.trim() || 'surface'
-        await sendTelegram(c.env.TELEGRAM_BOT_TOKEN, chatId, `📚 Starting research: "${topic}" (${depth})...`)
-        await fetch('https://n8n.thechefos.app/webhook/researcher', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic, depth, chat_id: chatId }),
         })
         return c.json({ ok: true })
       }
@@ -364,11 +315,13 @@ async function handleHelp(token: string, chatId: number): Promise<void> {
     '/coci [text] → family',
     '/money [text] → finance',
     '',
-    '*Grok Forge:*',
-    '/idea [text] → harvest knowledge nodes',
-    '/dump [text] → bulk knowledge extraction',
-    '/scan → brain scan + suggestions',
-    '/research "[topic]" [depth] → wiki research',
+    '*Conductor:*',
+    '/build [hunt] [clue] → fire hunter-exec',
+    '/kill [hunt] → kill active hunt',
+    '/babysit → watch active hunt',
+    '/hunts → list active hunts',
+    '',
+    '*Wiki:*',
     '/wiki [query] → search wiki',
     '',
     '*Other:*',
@@ -489,12 +442,6 @@ async function handleScheduled(env: Env): Promise<void> {
     alerts.push(...vercelAlerts)
   }
 
-  // Check Linear for stale urgent issues
-  if (env.LINEAR_API_KEY) {
-    const linearAlerts = await checkLinear(env.LINEAR_API_KEY)
-    alerts.push(...linearAlerts)
-  }
-
   // Send alerts if any, silent if all clear
   if (alerts.length > 0) {
     const message = alerts.join('\n\n')
@@ -573,48 +520,6 @@ async function checkVercel(token: string, projectId: string): Promise<string[]> 
   if (errors.length > 0) {
     const topError = errors[0]?.message?.slice(0, 100) || 'Unknown error'
     alerts.push(`⚠️ VERCEL ERROR\n${projectId}: ${errors.length} errors in last hour\nTop error: ${topError}\nAction: Check Vercel logs`)
-  }
-
-  return alerts
-}
-
-async function checkLinear(apiKey: string): Promise<string[]> {
-  const alerts: string[] = []
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-
-  const query = `{
-    issues(filter: {
-      priority: { eq: 1 },
-      updatedAt: { lt: "${sevenDaysAgo}" },
-      state: { type: { nin: ["completed", "canceled"] } }
-    }, first: 10) {
-      nodes {
-        identifier
-        title
-        updatedAt
-      }
-    }
-  }`
-
-  const resp = await fetch('https://api.linear.app/graphql', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: apiKey,
-    },
-    body: JSON.stringify({ query }),
-  })
-
-  if (!resp.ok) return alerts
-
-  const data = (await resp.json()) as {
-    data?: { issues?: { nodes: Array<{ identifier: string; title: string; updatedAt: string }> } }
-  }
-
-  const issues = data.data?.issues?.nodes || []
-  for (const issue of issues) {
-    const daysStale = Math.floor((Date.now() - new Date(issue.updatedAt).getTime()) / (1000 * 60 * 60 * 24))
-    alerts.push(`📋 LINEAR FLAG\n${issue.identifier} urgent for ${daysStale} days\n${issue.title}\nAction: Review and update`)
   }
 
   return alerts
