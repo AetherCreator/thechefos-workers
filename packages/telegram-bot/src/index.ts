@@ -4,6 +4,7 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string
   TELEGRAM_CHAT_ID: string
   BRAIN_WEBHOOK_SECRET: string
+  TELEGRAM_WEBHOOK_SECRET: string
   GITHUB_TOKEN: string
   AI: Ai
   // Alert service secrets (for cron)
@@ -53,7 +54,10 @@ app.get('/api/telegram/setup-webhook', async (c) => {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: webhookUrl }),
+      body: JSON.stringify({
+        url: webhookUrl,
+        secret_token: c.env.TELEGRAM_WEBHOOK_SECRET,
+      }),
     }
   )
   const setData = await setResp.json()
@@ -78,6 +82,15 @@ app.post('/api/telegram/send', async (c) => {
 })
 
 app.post('/api/telegram', async (c) => {
+  // Inbound auth — Telegram includes this header when setWebhook was called with secret_token.
+  // Forward-compat: skip enforcement if the env var is falsy (lets the Worker keep working
+  // during a one-time setup-webhook re-registration without 401-ing all traffic).
+  if (c.env.TELEGRAM_WEBHOOK_SECRET) {
+    const hdr = c.req.header('X-Telegram-Bot-Api-Secret-Token')
+    if (hdr !== c.env.TELEGRAM_WEBHOOK_SECRET) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401)
+    }
+  }
   const body = await c.req.json<TelegramUpdate>()
 
   const message = body.message
@@ -121,7 +134,10 @@ app.post('/api/telegram', async (c) => {
       if (isConductor) {
         await fetch('https://n8n.thechefos.app/webhook/telegram-router', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Telegram-Bot-Api-Secret-Token': c.env.TELEGRAM_WEBHOOK_SECRET,
+          },
           body: JSON.stringify({ message }),
         })
         return c.json({ ok: true })
