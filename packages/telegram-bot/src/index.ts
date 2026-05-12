@@ -120,7 +120,7 @@ app.post('/api/telegram', async (c) => {
         (cmd) => message.text === cmd || message.text!.startsWith(cmd + ' ') || message.text!.startsWith(cmd + '@')
       )
       if (isConductor) {
-        await fetch('https://n8n.thechefos.app/webhook/telegram-commands', {
+        await fetch('https://n8n.thechefos.app/webhook/telegram-router', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message }),
