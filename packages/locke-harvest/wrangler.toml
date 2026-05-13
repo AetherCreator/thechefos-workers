@@ -12,7 +12,14 @@ account_id = "cc231edbff18405233612d7afb657f1f"
 crons = ["0 0 * * SUN"]
 
 [vars]
-PERSONA = "locke-lamora"
+# Persona renamed 2026-05-13 (OPS-LOCKE-LOOKOUT-RENAME, Crew Bible §7).
+# Crew role: Lookout — weekly crow's-nest scan of Reddit/HN for demand signals.
+# Reports to Captain. Worker deployment name `locke-harvest` retained because
+# it's the Cloudflare resource identifier, not the persona label. Schema
+# version `locke-1.2` retained for downstream (Council) compatibility — the
+# schema is named after the persona-framework history, not the live persona.
+# See prompts/LOOKOUT-SOUL.md for full role definition.
+PERSONA = "lookout"
 BRAIN_PATH = "brain/05-leads"
 # SearXNG removed 2026-05-11 (the-prism C3 post-mortem). Replaced by hybrid
 # adapter system in src/searchAdapters.ts: Reddit native search.json + HN
