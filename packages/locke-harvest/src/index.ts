@@ -1,4 +1,4 @@
-// Locke Harvest Worker — implements LIBRARIAN-SCHEMA.md framework + LOCKE-OUTPUT-SCHEMA.md contract.
+// Lookout Worker (deployed as locke-harvest) — implements LIBRARIAN-SCHEMA.md framework + LOCKE-OUTPUT-SCHEMA.md contract.
 // Trigger: POST /run?secret=X for manual fire (cron deferred — see wrangler.toml comment).
 // MVP scope: Phase 1 (SearXNG) + Phase 3 (NIM Nemotron-120B analysis). Phase 2 (Agent-Reach) deferred per C1 audit.
 // MVP dedup: in-memory only (per-invocation Set<string>). KV-backed cross-invocation dedup is post-MVP.
@@ -25,6 +25,13 @@
 //     repeated` leads with cross-community evidence — they were just dropped on the floor.
 //     One-line fix in callNim: stringify when raw is non-string so extractJsonArray's
 //     regex/parse path stays uniform. Pattern banked separately for future Worker authors.
+//   2026-05-13: PERSONA renamed locke-lamora → lookout per Crew Bible §7
+//     (OPS-LOCKE-LOOKOUT-RENAME). Deployment name `locke-harvest`, URL,
+//     SCHEMA_VERSION `locke-1.2`, and `locke_notes` schema field all retained —
+//     those are deployment/schema identifiers, not persona labels. Persona voice
+//     + SYSTEM_PROMPT identity line updated; harvest logic unchanged. Council
+//     filters on lead.schema_version, never on lead.persona, so this rename is
+//     downstream-safe. See prompts/LOOKOUT-SOUL.md for the full role definition.
 
 import { search as adapterSearch, routeFor } from './searchAdapters';
 
@@ -94,7 +101,7 @@ const HUNT_CLUSTERS: Record<string, string[]> = {
 const HUNT_QUERIES: Array<{ theme: string; query: string }> = Object.entries(HUNT_CLUSTERS)
   .flatMap(([theme, queries]) => queries.map(query => ({ theme, query })));
 
-const SYSTEM_PROMPT = `You are Locke Lamora, Tyler's demand-signal hunter. Extract product opportunities from search results.
+const SYSTEM_PROMPT = `You are Lookout, Tyler's demand-signal hunter posted to the crow's nest of the THDD crew. Extract product opportunities from search results.
 
 Rules:
 - PAIN over features. Profile WHO hurts (role, industry, budget). Identify existing solutions + why they fail.
@@ -164,7 +171,7 @@ For each opportunity (max 5), return JSON matching exactly:
   "thread_count": 0,
   "total_upvotes": 0,
   "related_leads": [],
-  "locke_notes": "30-300 chars in Locke's voice",
+  "locke_notes": "30-300 chars in your voice — Lookout, the demand-signal hunter (field name retained for schema compat)",
   "evidence": [
     {
       "thread_url": "https://... (MUST come from candidates above)",
