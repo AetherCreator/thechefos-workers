@@ -189,22 +189,48 @@ app.post('/api/brain/push', async (c) => {
     let commitSha: string
 
     if (existingFile) {
-      const updateRes = await fetch(
-        `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${body.path}`,
-        {
-          method: 'PUT',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: body.message,
-            content: contentBase64,
-            sha: existingFile.sha,
-            committer: COMMITTER,
-          }),
+      // OPS-058e fix (2026-05-14): pass through GitHub status + auto-retry once on 409 SHA conflict.
+      // Old behavior: every GitHub failure remapped to opaque 502, swallowing 409/403/401 distinction.
+      // New: callers see real status; 409 (race) auto-recovers with fresh-SHA retry.
+      let updateRes!: Response
+      let currentSha = existingFile.sha
+      let retryAttempted = false
+      for (let attempt = 0; attempt < 2; attempt++) {
+        updateRes = await fetch(
+          `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${body.path}`,
+          {
+            method: 'PUT',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: body.message,
+              content: contentBase64,
+              sha: currentSha,
+              committer: COMMITTER,
+            }),
+          }
+        )
+        if (updateRes.ok) break
+        // 409 = SHA conflict (concurrent edit race) — fetch fresh SHA and retry once
+        if (updateRes.status === 409 && attempt === 0) {
+          const fresh = await getFileContent(body.path, headers)
+          if (fresh) {
+            currentSha = fresh.sha
+            retryAttempted = true
+            continue
+          }
         }
-      )
+        break
+      }
       if (!updateRes.ok) {
-        const err = await updateRes.text()
-        return c.json({ error: 'GitHub API error (update)', details: err }, 502)
+        const errText = await updateRes.text()
+        const proxyStatus = updateRes.status >= 500 ? 502 : updateRes.status
+        return c.json({
+          error: 'GitHub API error (update)',
+          github_status: updateRes.status,
+          github_message: errText.slice(0, 500),
+          retry_attempted: retryAttempted,
+          details: errText,
+        }, proxyStatus as any)
       }
       const updateData = await updateRes.json() as { commit: { sha: string } }
       commitSha = updateData.commit.sha
@@ -222,8 +248,15 @@ app.post('/api/brain/push', async (c) => {
         }
       )
       if (!createRes.ok) {
-        const err = await createRes.text()
-        return c.json({ error: 'GitHub API error (create)', details: err }, 502)
+        // OPS-058e fix (2026-05-14): pass through GitHub status + diagnostic fields
+        const errText = await createRes.text()
+        const proxyStatus = createRes.status >= 500 ? 502 : createRes.status
+        return c.json({
+          error: 'GitHub API error (create)',
+          github_status: createRes.status,
+          github_message: errText.slice(0, 500),
+          details: errText,
+        }, proxyStatus as any)
       }
       const createData = await createRes.json() as { commit: { sha: string } }
       commitSha = createData.commit.sha
