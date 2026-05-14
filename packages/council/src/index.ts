@@ -609,6 +609,18 @@ async function runSweep(env: Env): Promise<any> {
   let approved = 0, killed = 0, abstained = 0, unprocessable = 0, skipped = 0;
   const errors: string[] = [];
 
+  // Pre-build verdict-name Set from the directory listing we already have.
+  // Each lead would otherwise consume a verdictExists HEAD subrequest just to
+  // discover if it's already verdicted. With ~8 unpaired leads + ~4 paired,
+  // this saves ~12 subrequests per sweep invocation (critical for CF cap).
+  // Also more authoritative than the raw.githubusercontent.com HEAD probe,
+  // since CDN lag can cause verdictExists false-negatives just after a write.
+  const existingVerdictNames = new Set<string>(
+    files
+      .filter((f: any) => typeof f?.name === 'string' && f.name.endsWith('.verdict.json'))
+      .map((f: any) => f.name as string)
+  );
+
   for (const f of files) {
     if (!f?.name?.endsWith('.json')) continue;
     if (f.name.endsWith('.verdict.json')) continue;
@@ -621,7 +633,9 @@ async function runSweep(env: Env): Promise<any> {
     }
     const leadPath: string = f.path;
     try {
-      if (await verdictExists(leadPath, env)) {
+      // Cheap Set lookup instead of verdictExists subrequest.
+      const verdictName = f.name.replace(/\.json$/, '.verdict.json');
+      if (existingVerdictNames.has(verdictName)) {
         skipped++;
         continue;
       }
