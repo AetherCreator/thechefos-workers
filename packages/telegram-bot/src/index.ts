@@ -132,14 +132,26 @@ app.post('/api/telegram', async (c) => {
         (cmd) => message.text === cmd || message.text!.startsWith(cmd + ' ') || message.text!.startsWith(cmd + '@')
       )
       if (isConductor) {
-        await fetch('https://n8n.thechefos.app/webhook/telegram-router', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Telegram-Bot-Api-Secret-Token': c.env.TELEGRAM_WEBHOOK_SECRET,
-          },
-          body: JSON.stringify({ message }),
-        })
+        // OPS-058d defensive (2026-05-14): timeout + catch around n8n forward.
+        // Without this, if the n8n tunnel hangs, fetch waits past Worker wall-clock
+        // budget → CF returns 522 → Telegram retries the same update endlessly.
+        // Always return 200 quickly; n8n queue absorbs occasional misses.
+        try {
+          const ac = new AbortController()
+          const to = setTimeout(() => ac.abort(), 8000)
+          await fetch('https://n8n.thechefos.app/webhook/telegram-router', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Telegram-Bot-Api-Secret-Token': c.env.TELEGRAM_WEBHOOK_SECRET,
+            },
+            body: JSON.stringify({ message }),
+            signal: ac.signal,
+          })
+          clearTimeout(to)
+        } catch (e) {
+          console.log('telegram-router forward failed (OPS-058d defensive):', e instanceof Error ? e.message : e)
+        }
         return c.json({ ok: true })
       }
 
@@ -395,11 +407,23 @@ function parseCommand(text: string): { path: string; content: string } {
 // --- Telegram helpers ---
 
 async function sendTelegram(token: string, chatId: number, text: string): Promise<void> {
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  })
+  // OPS-058d defensive (2026-05-14): helper never throws.
+  // The /api/telegram catch block calls this on error — if it threw, the catch
+  // itself would propagate → CF 522. Swallowing here keeps the Worker resilient
+  // even when api.telegram.org is unreachable.
+  try {
+    const ac = new AbortController()
+    const to = setTimeout(() => ac.abort(), 8000)
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: ac.signal,
+    })
+    clearTimeout(to)
+  } catch (e) {
+    console.log('sendTelegram failed (OPS-058d defensive):', e instanceof Error ? e.message : e)
+  }
 }
 
 // --- Utilities ---
