@@ -133,9 +133,9 @@ app.post('/migrate/brain', async (c) => {
 // GET /query — structured brain queries
 app.get('/query', async (c) => {
   const params = {
-    domain: c.req.query('domain'),
-    type: c.req.query('type'),
-    tag: c.req.query('tag'),
+    domain: c.req.query('domain') || c.req.query('filter.domain'),
+    type: c.req.query('type') || c.req.query('filter.type'),
+    tag: c.req.query('tag') || c.req.query('filter.tag'),
     sort: c.req.query('sort') as 'updated_at' | 'created_at' | 'connection_count' | undefined,
     order: c.req.query('order') as 'asc' | 'desc' | undefined,
     limit: c.req.query('limit') ? parseInt(c.req.query('limit')!, 10) : undefined,
@@ -976,6 +976,103 @@ app.get("/intel/clue", async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// L1 Essential State Generator (salvaged from feat/archivist 2026-05-14)
+//
+// Generates brain/00-session/L1-ESSENTIAL.md from D1 brain state — a compact,
+// domain-diverse summary of the most recent active facts, decisions, and
+// project state. Used as low-token bootstrap context. Regenerated weekly via
+// the scheduled cron handler below; can also be hit manually via GET /l1/generate.
+// ---------------------------------------------------------------------------
+
+async function generateL1Content(
+  db: D1Database,
+  token: string | undefined
+): Promise<{ content: string; token_estimate: number; node_count: number; domains: string[]; generated_at: string }> {
+  const nodes = await db.prepare(`
+    SELECT *,
+      CASE
+        WHEN updated_at >= date('now', '-7 days') THEN 1.0
+        WHEN updated_at >= date('now', '-30 days') THEN 0.7
+        WHEN updated_at >= date('now', '-90 days') THEN 0.4
+        ELSE 0.1
+      END as recency_weight
+    FROM brain_nodes
+    WHERE status = 'active' OR status IS NULL
+    ORDER BY recency_weight DESC, connection_count DESC
+    LIMIT 30
+  `).all<NodeRow & { recency_weight: number }>();
+
+  // Domain-diverse selection (max 4 per domain, 15 total)
+  const selected: (NodeRow & { recency_weight: number })[] = [];
+  const domainCounts: Record<string, number> = {};
+  for (const node of nodes.results) {
+    if (selected.length >= 15) break;
+    const dc = domainCounts[node.domain] || 0;
+    if (dc >= 4) continue;
+    selected.push(node);
+    domainCounts[node.domain] = dc + 1;
+  }
+
+  const lines = [
+    '# L1 Essential State',
+    `Generated: ${new Date().toISOString().split('T')[0]}`,
+    '',
+  ];
+
+  const facts = selected.filter(n => n.type !== 'decision' && n.type !== 'project-state');
+  const decisions = selected.filter(n => n.type === 'decision');
+  const projects = selected.filter(n => n.type === 'project-state' || n.type === 'state');
+
+  if (facts.length) {
+    lines.push('## Active Facts');
+    facts.slice(0, 6).forEach(n => lines.push(`- [${n.domain}] ${n.title}`));
+    lines.push('');
+  }
+  if (decisions.length) {
+    lines.push('## Recent Decisions');
+    decisions.slice(0, 5).forEach(n => lines.push(`- [${n.domain}] ${n.title}`));
+    lines.push('');
+  }
+  if (projects.length) {
+    lines.push('## Active Projects');
+    projects.slice(0, 4).forEach(n => lines.push(`- ${n.title}`));
+    lines.push('');
+  }
+
+  const content = lines.join('\n');
+
+  // Push to GitHub
+  if (token) {
+    try {
+      const path = 'brain/00-session/L1-ESSENTIAL.md';
+      const existing = await getFileContent(token, 'AetherCreator/SuperClaude', path);
+      await putFileContent(
+        token, 'AetherCreator/SuperClaude', path, content,
+        existing?.sha || null,
+        `chore: regenerate L1 essential state (${new Date().toISOString().split('T')[0]})`
+      );
+    } catch (_) { /* don't fail on GitHub push error */ }
+  }
+
+  return {
+    content,
+    token_estimate: Math.ceil(content.length / 4),
+    node_count: selected.length,
+    domains: Object.keys(domainCounts),
+    generated_at: new Date().toISOString(),
+  };
+}
+
+app.get('/l1/generate', async (c) => {
+  try {
+    const result = await generateL1Content(c.env.BRAIN_DB, c.env.GITHUB_TOKEN);
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // Health check
 app.get('/health', (c) =>
   c.json({ status: 'ok', worker: 'superclaude-brain-graph' }),
@@ -994,6 +1091,11 @@ export default {
       if (env.GITHUB_TOKEN) {
         await generateAndPushCognitiveCache(env.BRAIN_DB, env.GITHUB_TOKEN);
       }
+      // Salvage 2026-05-14 (from feat/archivist): regenerate L1 essential state
+      // alongside the weekly cognitive cache pass.
+      try {
+        await generateL1Content(env.BRAIN_DB, env.GITHUB_TOKEN);
+      } catch (_) { /* don't fail cron on L1 error */ }
     }
   },
 };
