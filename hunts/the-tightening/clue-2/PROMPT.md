@@ -1,32 +1,36 @@
 [CODE-AUTONOMOUS][DETERMINISTIC][SUBSTANTIAL]
 
-# Hunt: the-tightening — Clue 2 — Locke `callNim` → `callLLM` (surgical retry)
+# Hunt: the-tightening — Clue 2 — Locke `callNim` → `callLLM` (v3: trailer auto-close)
 
 **Repo:** AetherCreator/thechefos-workers
 **Branch:** main
-**Author:** Chat-Opus 2026-05-14 (retry-v2 after deliberation collapse 2026-05-14T12:11Z + ~14:00Z)
-**Bible:** 1.2.4 §A7 audit-wrap + §A8 reasoning-weight + §A9 SUBSTANTIAL
+**Author:** Chat-Opus 2026-05-14 (v3 after stream-json refire uncovered Task 10 privilege barrier)
+**Bible:** 1.2.4 §A7 audit-wrap + §A8 reasoning-weight + §A9 SUBSTANTIAL + (candidate) §A20 agent/trailer-split
 **MAP:** `hunts/the-tightening/MAP.md`
-**Forensic:** `hunts/the-tightening/clue-2/PROMPT-v1-failed.md` (prior PROMPT preserved)
+**Forensic:**
+- `hunts/the-tightening/clue-2/PROMPT-v1-failed.md` (phantom-Council deliberation collapse)
+- `hunts/the-tightening/clue-2/PROMPT-v2-strand.md` (Task 10 privilege-barrier strand)
 
 ---
 
 ## Context
 
-Original C2 PROMPT (v1) asked the agent to rename `callNim` → `callLLM` across BOTH `packages/locke-harvest/src/index.ts` AND `packages/council/src/index.ts`. Substrate truth (probed Chat-side 2026-05-14T15:30Z):
+PROMPT v1 lied about substrate state (asked agent to rename callNim in Council where the function never existed) — agent burned full budget in "did I miss something?" deliberation loop, made zero edits.
 
-- **Council has ZERO occurrences of `callNim`.** Its LLM-calling function is `callJudge` at L222, on `env.AI.run()` for Kimi K2.6 since 2026-05-07.
-- **The 3 `nim-error` matches in Council are filter regex + comments** documenting historical contamination. Defensive — must stay.
+PROMPT v2 fixed substrate honesty (line-numbered Locke-only surgical targets). Agent reached Task 9 cleanly. BUT Task 10 ("invoke hunt_complete.py") is structurally blocked: agent runs as yasaisama, can't read `/opt/secrets/github-token` (mode 600 root:root). Agent burned 12 minutes retrying hunt_complete.py with different status enums + evidence formats, finally identified the token barrier — then SIGTERM hit.
 
-Diagnosis of v1 deliberation collapse: agent correctly found Council had nothing to rename, then got stuck reasoning "PROMPT says rename here but `callNim` doesn't exist — am I missing something?" Burned full 1200s inner timeout in that loop without making a single edit. **The PROMPT lied about substrate state. That's the bug.**
+Fix shipped 2026-05-14 (before this fire): `claude-exec.sh` trailer patched to auto-invoke `hunt_complete.py` from root context on EXIT=0 + NEW_COMMITS>0 + workspace COMPLETE.md present. Trailer is the right surface for closure — agent doesn't need to.
 
-This v2 is surgical: 2 line-numbered targets in Locke only. Council acknowledged clean. No inventory step.
+This v3 reflects the agent/trailer split:
+- Agent's job: edit, verify, commit work, /health probe, write COMPLETE.md locally
+- Trailer's job: publish COMPLETE.md to SuperClaude via hunt_complete.py
+- No Task 10 in agent's scope
 
 ---
 
 ## Surgical targets
 
-**Pre-flight:** Probed 2026-05-14T15:30Z from `AetherCreator/thechefos-workers` HEAD.
+(Same as v2. Probed 2026-05-14T15:30Z from thechefos-workers HEAD.)
 
 1. **`packages/locke-harvest/src/index.ts:205` — function declaration:**
    - OLD: `async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<{ text: string; raw: any }> {`
@@ -36,86 +40,108 @@ This v2 is surgical: 2 line-numbered targets in Locke only. Council acknowledged
    - OLD: `    const result = await callNim(SYSTEM_PROMPT, userPrompt, env);`
    - NEW: `    const result = await callLLM(SYSTEM_PROMPT, userPrompt, env);`
 
-**That is the entire scope.** No comments. No variable names (`nimText`/`nimRaw`/`nimCalls` stay). No Council. No wrangler.toml. No ACTIVE-STATE.md. No filename pattern renames.
+**Entire scope.** No comments, no variable names, no Council, no wrangler.toml, no ACTIVE-STATE.md, no filename pattern renames.
 
 ---
 
-## Task list (deterministic order)
+## Task list (deterministic order — 8 tasks, no Task 10)
 
-1. **Clone workspace** (claude-exec.sh does this; workspace at `/tmp/claude-exec-the-tightening-clue2-<pid>/`).
-2. **Direct edit L205 (declaration):** apply OLD→NEW pair above using your file-edit tool. No grep, no inventory — the line is named.
-3. **Direct edit L546 (call site):** apply OLD→NEW pair above. Same surgical approach.
-4. **Self-verify with grep:**
+1. **Clone workspace** (claude-exec.sh did this; workspace at `/tmp/claude-exec-the-tightening-clue2-<pid>/`).
+2. **Direct edit L205 (declaration):** apply OLD→NEW pair using Edit tool. No grep, no inventory.
+3. **Direct edit L546 (call site):** apply OLD→NEW pair.
+4. **Self-verify with grep (4 checks):**
    - `grep -c 'async function callLLM' packages/locke-harvest/src/index.ts` → `1`
    - `grep -c 'async function callNim' packages/locke-harvest/src/index.ts` → `0`
    - `grep -c 'await callLLM(SYSTEM_PROMPT' packages/locke-harvest/src/index.ts` → `1`
    - `grep -c 'await callNim(SYSTEM_PROMPT' packages/locke-harvest/src/index.ts` → `0`
-5. **Comments retaining `callNim` are INTENTIONAL.** Lines 18, 26, 212 reference `callNim` in historical comments. **DO NOT touch them.** They document substrate history truthfully.
-6. **Single commit:**
-   - Title: `the-tightening C2 (v2): Locke callNim → callLLM (surgical, 2-line)`
+5. **Comment retention check.** Verify `grep -n callNim packages/locke-harvest/src/index.ts` still shows 2-3 hits in comments only (lines 18, 26, 212 ish). DO NOT touch those comments.
+6. **Single commit + push:**
+   - Title: `the-tightening C2 (v3): Locke callNim → callLLM (surgical, 2-line)`
    - Body: file+line summary + grep counts.
-   - Push to `main`.
-7. **Author COMPLETE.md** at `hunts/the-tightening/clue-2/COMPLETE.md` BEFORE Task 8: commit SHA, the 2 line-number+file pairs, grep self-verify output, /health probe (filled in Task 9).
-8. **Poll `deploy-locke-harvest` CI run** for this commit. 15s interval, max 5 min. Council CI not relevant.
-9. **Locke /health probe:** `curl -sS https://locke-harvest.tveg-baking.workers.dev/health | jq` → `ok: true`.
-10. **Invoke `hunt_complete.py`** with work-commit SHA in `--evidence`. Bible §6.1 trailer fires via trap finalize.
+   - `git push origin main`
+7. **Locke /health probe:** `curl -sS https://locke-harvest.tveg-baking.workers.dev/health | jq` — capture full JSON.
+8. **Write COMPLETE.md to workspace** at `hunts/the-tightening/clue-2/COMPLETE.md` (relative path inside cloned repo). **DO NOT COMMIT IT** to the work repo. The trailer will publish it to SuperClaude. Content (markdown):
+   - Commit SHA from Task 6
+   - The 2 line-number+file pairs
+   - All 4 grep counts from Task 4
+   - Comment-retention verification (from Task 5)
+   - Full /health JSON from Task 7
+
+After Task 8: **exit cleanly.** The trailer (root context) will:
+- Detect EXIT=0 + NEW_COMMITS>0 + workspace COMPLETE.md present
+- Invoke `hunt_complete.py` from root with workspace COMPLETE.md as source
+- Publish canonical COMPLETE.md to SuperClaude
+- Ping Ship's Doctor with ✅ done + SuperClaude close-commit SHA
 
 ---
 
 ## Pass conditions (Rule-4 bash-verifiable)
 
 ```bash
+# Agent self-verifiable:
 [ "$(grep -c 'async function callLLM' packages/locke-harvest/src/index.ts)" = "1" ] && echo PASS-1
 [ "$(grep -c 'async function callNim' packages/locke-harvest/src/index.ts)" = "0" ] && echo PASS-2
 [ "$(grep -c 'await callLLM(SYSTEM_PROMPT' packages/locke-harvest/src/index.ts)" = "1" ] && echo PASS-3
 [ "$(grep -c 'await callNim(SYSTEM_PROMPT' packages/locke-harvest/src/index.ts)" = "0" ] && echo PASS-4
 [ "$(curl -sS https://locke-harvest.tveg-baking.workers.dev/health | jq -r .ok)" = "true" ] && echo PASS-5
-# Plus: hunts/the-tightening/clue-2/COMPLETE.md present on origin/main
-# Plus: deploy-locke-harvest GHA run for this commit conclusion=success
+[ -s "hunts/the-tightening/clue-2/COMPLETE.md" ] && echo PASS-6
+
+# Trailer-verifiable (after agent exit):
+# - SuperClaude /repos/.../hunts/the-tightening/clue-2/COMPLETE.md returns 200
+# - intel_log terminal row posted
+# - Ship's Doctor ping: ✅ done with trailer auto-close SHA
 ```
 
 ---
 
 ## Anti-patterns to refuse
 
-- DO NOT touch `packages/council/`. Verified clean Chat-side — `callNim` count = 0.
+- DO NOT touch `packages/council/`. Verified clean — `callNim` count = 0.
 - DO NOT touch `wrangler.toml`. Env var bindings out of scope.
 - DO NOT touch ACTIVE-STATE.md. Different repo.
 - DO NOT rename local variables `nimText`/`nimRaw`/`nimCalls`/`nimError`/`nimBudget`/`nimErrorStack`. Out of scope.
 - DO NOT rename the `'nim_failed'` event string at `logIntel`. Out of scope.
 - DO NOT update historical comments at L18, L26, L212. They document substrate history.
 - DO NOT add tests, scaffolding, or refactor logic.
-- DO NOT search for "callNim". You already have the line numbers. Just edit.
+- DO NOT search for "callNim". You already have the line numbers.
+
+**v3 NEW anti-patterns:**
+- DO NOT commit COMPLETE.md to the work repo. Write it to your workspace path only. The trailer publishes to SuperClaude.
+- DO NOT invoke `hunt_complete.py`. The trailer handles this. You can't read `/opt/secrets/github-token` anyway (yasaisama privilege boundary).
+- DO NOT poll deploy-locke-harvest CI. /health probe is the deploy verification.
 
 ---
 
-## §3 row 2 data note
+## State-variant expectations
 
-v1 was a 2-Worker mechanical-rename-of-mythical-scope → **deliberation collapse data**, not synthesis budget data. The phantom-Council scope spun the agent.
+- ✅ `done — trailer auto-closed to SuperClaude (CLOSE_SHA)` — clean pass (expected for v3)
+- ⚠️ `STRANDED` — workspace COMPLETE.md missing or trailer auto-close failed. Manual close needed.
+- 💀 `OUTER-TIMEOUT` — would be remarkable; v2 burned 12 min on Task 10 retry loop, v3 has no such loop.
+- 💀 `CRASH` — runner died before COMPLETE.md authored.
+- ❌ `failed` — explicit non-zero exit.
 
-v2 is a 2-line surgical edit. Expected: 5-8 turns, under 180s wall. If v2 ALSO collapses, cause is NOT scope or PROMPT honesty — deeper substrate issue, new diagnostic clue.
-
-State-variant expectations:
-- ✅ `done exit=0` — clean pass (expected)
-- ⚠️ FALSE COMPLETE — strand-guard fires
-- 💀 OUTER-TIMEOUT — remarkable for 2-line edit; would falsify OPS-CC-TURN-COUNT-CEILING
-- 💀 BUDGET-EXHAUSTED — not expected
+Expected wall: under 180s. Agent does Tasks 1-6 in ~90s, /health probe + COMPLETE.md write in ~30s.
 
 ---
 
 ## Bible references
 
 - §A7 audit-wrap: STRICT-wrap shell ops.
-- §A8 reasoning-weight: **LOW** — 2-line surgical, all targets pre-resolved. Zero judgment calls.
-- §A9 SUBSTANTIAL: claude-exec.sh substrate is right (file edits + commit + CI poll + /health), synthesis weight minimal.
+- §A8 reasoning-weight: **LOW** — pre-resolved targets.
+- §A9 SUBSTANTIAL: claude-exec.sh substrate.
+- §A20 (candidate) agent/trailer-split: agents lack root-only secrets by design; tasks requiring secrets lift to trailer.
 - §6.1 truth-telling: trap finalize fires regardless of exit path.
 
 ---
 
-## Bible candidate banked from v1 failure
+## Bible candidates banked from this hunt
 
-**PROMPT-author substrate honesty is a §A8 reasoning-weight subspecies.** When a PROMPT instructs an action whose pre-condition is false ("rename X in Y" when X doesn't exist in Y), the agent burns deliberation budget on "did I miss something?" loops rather than failing fast. Mitigation: PROMPT-author probes substrate Chat-side before authoring; bakes verified line numbers into PROMPT. Cross-refs: hunter-false-complete-antipattern, claude-exec-partial-complete-strand-pattern, audit-completeness-gap-bilateral-probe.
+1. **PROMPT-author substrate honesty** (§A8 subspecies, from v1): PROMPTs that lie about pre-conditions cause deliberation collapse. Mitigation: probe substrate Chat-side, bake verified targets into PROMPT.
+
+2. **Agent/trailer privilege split** (§A20 candidate, from v2): agents lack root-only secrets. Tasks requiring secrets MUST lift to trailer (root). The "agent does everything" model is wrong; the right model is "agent edits, trailer closes."
+
+3. **hunt_complete.py cross-repo verification bug**: script hardcodes `REPO=SuperClaude`, rejects work commits on other repos via verification. Workaround: evidence uses `work_commit` not `commit`. Fix candidate: detect repo from evidence or accept both keys.
 
 ---
 
-> *"Drift fixed. Two lines. No phantoms."* 🏴‍☠️
+> *"Agent edits. Trailer closes. Each surface in its own privilege envelope."* 🩺

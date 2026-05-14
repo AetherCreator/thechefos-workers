@@ -202,7 +202,7 @@ async function logIntel(env: Env, event: Record<string, any>): Promise<void> {
   }
 }
 
-async function callLLM(systemPrompt: string, userPrompt: string, env: Env): Promise<{ text: string; raw: any }> {
+async function callNim(systemPrompt: string, userPrompt: string, env: Env): Promise<{ text: string; raw: any }> {
   // 2026-05-11 evening: swapped NVIDIA NIM HTTP → Cloudflare Workers AI binding
   // (OPS-LOCKE-NIM-CEILING fix). NIM Nemotron-120B's ~145s NVIDIA edge timeout
   // was brittle at slice(0,3) (cleared on fires 4+5, 524'd on fires 1,3,6 —
@@ -543,7 +543,7 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   try {
     if (nimCalls >= nimBudget) throw new Error('nim_budget_exhausted');
     reachedPhase3 = true;
-    const result = await callLLM(SYSTEM_PROMPT, userPrompt, env);
+    const result = await callNim(SYSTEM_PROMPT, userPrompt, env);
     nimText = result.text;
     nimRaw = result.raw;
     nimCalls++;
