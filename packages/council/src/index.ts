@@ -349,6 +349,27 @@ function parseSupportedLeadVersions(raw: string): string[] {
   return trimmed.split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// Filename patterns indicating non-lead diagnostic dumps in brain/05-leads/_drafts/.
+// Historical contamination sources:
+//   - nim-error-* : pre-Workers-AI catch-block diagnostic JSON dumps (Locke + Council)
+//   - llm-error-* : post-the-tightening-C2 rename target; pre-emptive
+//   - c\d+-smoke-* : C-clue smoke stub artifacts from hunt scaffolding
+//   - underscore-prefixed : reserved/system filenames
+// Pre-filter saves verdictExists + readLead subrequests per matched file (CF Workers
+// per-invocation cap blew on 2026-05-14 organic sweep with 22 _drafts/ files, 12 of
+// which were nim-error-* contamination — see OPS-COUNCIL-SUBREQUEST-CAP filing).
+const NON_LEAD_FILENAME_PATTERNS: RegExp[] = [
+  /^nim-error-/i,
+  /^llm-error-/i,
+  /^c\d+-smoke/i,
+  /^_/,
+];
+
+function isNonLeadFilename(name: string): boolean {
+  const stem = name.replace(/\.json$/, '');
+  return NON_LEAD_FILENAME_PATTERNS.some((rx) => rx.test(stem));
+}
+
 function filterLead(lead: any, env: Env): { passes: boolean; reason?: string } {
   const supported: string[] = parseSupportedLeadVersions(env.SUPPORTED_LEAD_VERSIONS);
   const confidenceFilter: string[] = JSON.parse(env.CONFIDENCE_FILTER);
@@ -590,6 +611,13 @@ async function runSweep(env: Env): Promise<any> {
   for (const f of files) {
     if (!f?.name?.endsWith('.json')) continue;
     if (f.name.endsWith('.verdict.json')) continue;
+    // Pre-filter non-lead diagnostic filenames BEFORE any subrequest.
+    // Saves verdictExists + readLead subrequests each — critical for CF Workers per-invocation cap.
+    if (isNonLeadFilename(f.name)) {
+      skipped++;
+      await logIntel(env, { event: 'sweep_prefiltered_nonlead', session_id: sessionId, filename: f.name });
+      continue;
+    }
     const leadPath: string = f.path;
     try {
       if (await verdictExists(leadPath, env)) {
