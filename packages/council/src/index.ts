@@ -359,10 +359,11 @@ function parseSupportedLeadVersions(raw: string): string[] {
 // per-invocation cap blew on 2026-05-14 organic sweep with 22 _drafts/ files, 12 of
 // which were nim-error-* contamination — see OPS-COUNCIL-SUBREQUEST-CAP filing).
 const NON_LEAD_FILENAME_PATTERNS: RegExp[] = [
-  /^nim-error-/i,
-  /^llm-error-/i,
-  /^c\d+-smoke/i,
-  /^_/,
+  /^nim-error-/i,         // pre-Workers-AI catch-block diagnostic dumps
+  /^llm-error-/i,         // post-the-tightening-C2 rename target; pre-emptive
+  /^analyzer-trace-/i,    // Locke analyzer trace dumps (session_id + scan metadata, no schema_version) — observed 23-45KB each
+  /^c\d+-smoke/i,         // C-clue smoke stub testing artifacts
+  /^_/,                   // reserved/system files
 ];
 
 function isNonLeadFilename(name: string): boolean {
