@@ -118,8 +118,8 @@ app.post('/api/webhook/github', async (c) => {
     return c.json({ ok: true, action: 'ignored — non-main branch' })
   }
 
-  // Scan all commits for COMPLETE.md files
-  let foundComplete = false
+  // Scan all commits for COMPLETE.md files and capture path + commit metadata
+  const completeMdPaths: { path: string; commitSha: string; commitMessage: string }[] = []
   for (const commit of payload.commits) {
     const allFiles = [
       ...(commit.added || []),
@@ -127,18 +127,63 @@ app.post('/api/webhook/github', async (c) => {
     ]
     for (const file of allFiles) {
       if (file.endsWith('COMPLETE.md')) {
-        foundComplete = true
-        break
+        completeMdPaths.push({
+          path: file,
+          commitSha: commit.id,
+          commitMessage: commit.message || '',
+        })
       }
     }
-    if (foundComplete) break
   }
 
-  if (!foundComplete) {
+  if (completeMdPaths.length === 0) {
     return c.json({ ok: true, action: 'no COMPLETE.md detected' })
   }
 
-  // Clear the active hunt clue
+  // Try to auto-claim a matching ACTIVE OPS row for each detected COMPLETE.md.
+  // Reads OPS-BOARD once for matching, then calls completeOpsItem (which re-fetches
+  // for atomic SHA-aware moveLine + GitHub PUT under retryOnce).
+  const opsResults: Array<{
+    path: string
+    hunt?: string
+    ops_id?: string
+    result:
+      | { ok: true; board_sha?: string; commit_url?: string; moved_id: string }
+      | { ok: false; error: string; current_section?: string; status?: number; detail?: string }
+  }> = []
+
+  let parsedBoard: ParsedOpsBoard | null = null
+  try {
+    const headers = githubHeaders(c.env.GITHUB_TOKEN)
+    const opsFile = await getFileContent(OPS_BOARD_PATH, headers)
+    if (opsFile) parsedBoard = parseOpsBoard(decodeBase64Content(opsFile.content))
+  } catch {
+    // Soft-fail: continue to gate-clear if OPS-BOARD unreadable
+  }
+
+  for (const detected of completeMdPaths) {
+    const huntInfo = extractHuntInfo(detected.path)
+    if (!huntInfo) {
+      opsResults.push({ path: detected.path, result: { ok: false, error: 'not_hunt_path' } })
+      continue
+    }
+    const item = parsedBoard ? findActiveOpsItemForHunt(parsedBoard, huntInfo.hunt) : null
+    if (!item) {
+      opsResults.push({
+        path: detected.path,
+        hunt: huntInfo.hunt,
+        result: { ok: false, error: 'no_matching_active_ops_row' },
+      })
+      continue
+    }
+    const firstLine = detected.commitMessage.split('\n')[0].slice(0, 100)
+    const summary = `${huntInfo.clue} shipped (${firstLine || 'auto-claim'})`
+    const evidenceUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${detected.commitSha}`
+    const result = await completeOpsItem(c.env, item.id, summary, evidenceUrl)
+    opsResults.push({ path: detected.path, hunt: huntInfo.hunt, ops_id: item.id, result })
+  }
+
+  // Clear the active hunt clue (existing behavior preserved)
   const raw = await c.env.SESSION_KV.get(SESSION_STATE_KEY)
   const current: SessionState = raw ? JSON.parse(raw) : { active_hunt_clue: null }
   const previousClue = current.active_hunt_clue
@@ -147,8 +192,10 @@ app.post('/api/webhook/github', async (c) => {
 
   return c.json({
     ok: true,
-    action: 'gate_cleared',
+    action: 'gate_cleared_and_ops_processed',
     previous_clue: previousClue,
+    complete_md_count: completeMdPaths.length,
+    ops_results: opsResults,
   })
 })
 
@@ -399,23 +446,52 @@ app.post('/api/ops/claim', async (c) => {
   return c.json(result, result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'already_claimed' ? 200 : 500)))
 })
 
-// POST /api/ops/complete — body { id, summary, evidence_url? }
-app.post('/api/ops/complete', async (c) => {
-  let body: { id?: string; summary?: string; evidence_url?: string }
-  try { body = await c.req.json() } catch { return c.json({ error: 'bad_json' }, 400) }
-  const { id, summary, evidence_url } = body
-  if (!id || !summary) return c.json({ error: 'missing_fields', hint: '{id, summary, evidence_url?}' }, 400)
-  if (summary.length < 4) return c.json({ error: 'summary_too_short' }, 400)
+// ─── Helpers for webhook-driven OPS auto-claim ───────────────────
 
-  const headers = githubHeaders(c.env.GITHUB_TOKEN)
-  const result = await retryOnce(async () => {
+// Parse a path like "hunts/foo-bar/clue-3/COMPLETE.md" → { hunt: "foo-bar", clue: "clue-3" }
+function extractHuntInfo(filePath: string): { hunt: string; clue: string } | null {
+  const m = filePath.match(/^hunts\/([^/]+)\/(clue-[^/]+)\/COMPLETE\.md$/)
+  if (!m) return null
+  return { hunt: m[1], clue: m[2] }
+}
+
+// Find an ACTIVE OpsItem whose ID or title matches a hunt slug.
+// Tries direct ID (OPS-FOO-BAR) first, then substring fallback.
+function findActiveOpsItemForHunt(parsed: ParsedOpsBoard, slug: string): OpsItem | null {
+  const slugUpper = slug.toUpperCase()
+  const slugId = `OPS-${slugUpper}`
+  let item = parsed.sections.active.find((i) => i.id === slugId)
+  if (item) return item
+  const slugLower = slug.toLowerCase()
+  item = parsed.sections.active.find(
+    (i) =>
+      i.id.toLowerCase().includes(slugLower) ||
+      (i.title || '').toLowerCase().includes(slugLower)
+  )
+  return item || null
+}
+
+// Reusable: complete an OPS item. Same logic as the /api/ops/complete route handler;
+// extracted so the webhook handler can call it internally without re-fetching auth.
+async function completeOpsItem(
+  env: Env,
+  id: string,
+  summary: string,
+  evidence_url?: string
+): Promise<
+  | { ok: true; board_sha?: string; commit_url?: string; moved_id: string }
+  | { ok: false; error: string; current_section?: string; status?: number; detail?: string }
+> {
+  if (!id || !summary) return { ok: false, error: 'missing_fields' }
+  if (summary.length < 4) return { ok: false, error: 'summary_too_short' }
+  const headers = githubHeaders(env.GITHUB_TOKEN)
+  return await retryOnce(async () => {
     const file = await getFileContent(OPS_BOARD_PATH, headers)
     if (!file) return { ok: false, error: 'fetch_failed' as const }
     const parsed = parseOpsBoard(decodeBase64Content(file.content))
 
     const item = parsed.sections.active.find((i) => i.id === id)
     if (!item) {
-      // Differentiate not_in_active vs not_found
       for (const s of ['urgent', 'backlog', 'completed'] as OpsSection[]) {
         if (parsed.sections[s].find((i) => i.id === id)) {
           return { ok: false, error: 'not_in_active' as const, current_section: s }
@@ -431,13 +507,18 @@ app.post('/api/ops/complete', async (c) => {
     if (!completedBounds || completedBounds.separator_line < 0) {
       return { ok: false, error: 'completed_section_missing' as const }
     }
-    // Prepend = insert as first data row (right after separator)
     const insertBeforeRemove = completedBounds.separator_line + 1
 
     const newLines = moveLine(parsed.raw_lines, item.line_index, insertBeforeRemove, newRow)
     const newContent = newLines.join('\n')
 
-    const putRes = await putFile(OPS_BOARD_PATH, newContent, file.sha, `ops_board.complete: ${id} → COMPLETED`, headers)
+    const putRes = await putFile(
+      OPS_BOARD_PATH,
+      newContent,
+      file.sha,
+      `ops_board.complete: ${id} → COMPLETED`,
+      headers
+    )
     if (!putRes.ok) {
       if (putRes.status === 409) return { ok: false, error: 'sha_stale' as const, retry: true }
       return { ok: false, error: 'worker_4xx' as const, status: putRes.status, detail: putRes.detail }
@@ -449,6 +530,16 @@ app.post('/api/ops/complete', async (c) => {
       moved_id: id,
     }
   })
+}
+
+// POST /api/ops/complete — body { id, summary, evidence_url? }
+app.post('/api/ops/complete', async (c) => {
+  let body: { id?: string; summary?: string; evidence_url?: string }
+  try { body = await c.req.json() } catch { return c.json({ error: 'bad_json' }, 400) }
+  const { id, summary, evidence_url } = body
+  if (!id || !summary) return c.json({ error: 'missing_fields', hint: '{id, summary, evidence_url?}' }, 400)
+
+  const result = await completeOpsItem(c.env, id, summary, evidence_url)
   return c.json(
     result,
     result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500))
