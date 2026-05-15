@@ -12,7 +12,7 @@ id = "e9dfcffc9e094365aec142267cb39a1e"
 # Create with: `wrangler kv namespace create idempotency-keys` then paste id below.
 [[kv_namespaces]]
 binding = "IDEMPOTENCY_KEYS"
-id = "REPLACE_WITH_IDEMPOTENCY_KEYS_NAMESPACE_ID"
+id = "fee11c9392d141d49eb8efa7d495d7be"
 
 # Guard Layer secrets (set with `wrangler secret put <NAME>`):
 #   TYLER_CHAT_ID            — defaults to 6091970994 in notifier if unset
