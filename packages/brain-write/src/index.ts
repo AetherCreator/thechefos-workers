@@ -724,6 +724,86 @@ app.post('/api/ops/complete', async (c) => {
   )
 })
 
+// POST /api/ops/reopen — body { id, reason? }
+// Reverse command for ops_board_promote (Guard Layer evidence
+// reversible_via.command='ops_board_reopen'). Moves a COMPLETED row back to ACTIVE.
+// Does NOT run substrate verifiers — reopen is intentionally permissive (recovery action).
+app.post('/api/ops/reopen', async (c) => {
+  let body: { id?: string; reason?: string }
+  try { body = await c.req.json() } catch { return c.json({ error: 'bad_json' }, 400) }
+  const { id, reason } = body
+  if (!id) return c.json({ error: 'missing_fields', hint: '{id, reason?}' }, 400)
+
+  const result = await reopenOpsItem(c.env, id, reason)
+  return c.json(
+    result,
+    result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_completed' ? 409 : 500))
+  )
+})
+
+async function reopenOpsItem(
+  env: Env,
+  id: string,
+  reason?: string
+): Promise<
+  | { ok: true; board_sha?: string; commit_url?: string; moved_id: string }
+  | { ok: false; error: string; current_section?: string; status?: number; detail?: string }
+> {
+  const headers = githubHeaders(env.GITHUB_TOKEN)
+  return await retryOnce(async () => {
+    const file = await getFileContent(OPS_BOARD_PATH, headers)
+    if (!file) return { ok: false, error: 'fetch_failed' as const }
+    const parsed = parseOpsBoard(decodeBase64Content(file.content))
+
+    const item = parsed.sections.completed.find((i) => i.id === id)
+    if (!item) {
+      for (const s of ['urgent', 'active', 'backlog'] as OpsSection[]) {
+        if (parsed.sections[s].find((i) => i.id === id)) {
+          return { ok: false, error: 'not_in_completed' as const, current_section: s }
+        }
+      }
+      return { ok: false, error: 'not_found' as const }
+    }
+    if (item.line_index == null) return { ok: false, error: 'no_line_index' as const }
+
+    const today = isoDate()
+    // Title in completed rows is encoded as **ID — TITLE**. Strip the wrapper.
+    const titleMatch = item.title.match(/\*\*\s*[A-Z]+-[\w-]+\s*—\s*(.+?)\*\*/)
+    const cleanTitle = titleMatch ? titleMatch[1].trim() : item.title.replace(/[*]/g, '').trim()
+    const reasonNote = reason ? ` (reopened ${today}: ${reason})` : ` (reopened ${today})`
+    const newRow = `| ${id} | ${cleanTitle} | — | ${reasonNote.trim()} |`
+
+    const activeBounds = parsed.bounds.active
+    if (!activeBounds || activeBounds.separator_line < 0) {
+      return { ok: false, error: 'active_section_missing' as const }
+    }
+    const insertBeforeRemove = activeBounds.last_data_line >= 0
+      ? activeBounds.last_data_line + 1
+      : activeBounds.separator_line + 1
+
+    const newLines = moveLine(parsed.raw_lines, item.line_index, insertBeforeRemove, newRow)
+    const newContent = newLines.join('\n')
+
+    const putRes = await putFile(
+      OPS_BOARD_PATH,
+      newContent,
+      file.sha,
+      `ops_board.reopen: ${id} → ACTIVE${reason ? ` (${reason.slice(0, 60)})` : ''}`,
+      headers
+    )
+    if (!putRes.ok) {
+      if (putRes.status === 409) return { ok: false, error: 'sha_stale' as const, retry: true }
+      return { ok: false, error: 'worker_4xx' as const, status: putRes.status, detail: putRes.detail }
+    }
+    return {
+      ok: true as const,
+      board_sha: putRes.commit_sha,
+      commit_url: putRes.commit_url,
+      moved_id: id,
+    }
+  })
+}
+
 // POST /api/ops/escalate — body { id, reason, severity? }
 // Posts to /api/telegram per clue-1 contract; does NOT mutate the board.
 // NOTE: /api/telegram is a known black hole per OPS-041; this route is contract-conformant
