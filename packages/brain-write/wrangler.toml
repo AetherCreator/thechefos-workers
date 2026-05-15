@@ -7,3 +7,13 @@ compatibility_date = "2026-03-01"
 [[kv_namespaces]]
 binding = "SESSION_KV"
 id = "e9dfcffc9e094365aec142267cb39a1e"
+
+# Guard Layer (P0.5) — idempotency cache + audit dedup.
+# Create with: `wrangler kv namespace create idempotency-keys` then paste id below.
+[[kv_namespaces]]
+binding = "IDEMPOTENCY_KEYS"
+id = "REPLACE_WITH_IDEMPOTENCY_KEYS_NAMESPACE_ID"
+
+# Guard Layer secrets (set with `wrangler secret put <NAME>`):
+#   TYLER_CHAT_ID            — defaults to 6091970994 in notifier if unset
+#   SHIPS_DOCTOR_BOT_TOKEN   — Crazy I. Joe bot (Crew Bible §4); falls back to MASTRO_BOT_TOKEN

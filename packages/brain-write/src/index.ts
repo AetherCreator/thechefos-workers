@@ -1,5 +1,6 @@
 // packages/brain-write/src/index.ts
 import { Hono } from 'hono'
+import { guardLayer, type GuardLayerEnv } from './guard-layer'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -16,6 +17,12 @@ export interface Env {
   WEBHOOK_SECRET: string
   GITHUB_WEBHOOK_SECRET: string
   SESSION_KV: KVNamespace
+  // Guard Layer (P0.5) — KV + notifier bindings. Optional during rollout:
+  // when IDEMPOTENCY_KEYS is unbound, callers fall back to non-guarded path.
+  IDEMPOTENCY_KEYS?: KVNamespace
+  TYLER_CHAT_ID?: string
+  SHIPS_DOCTOR_BOT_TOKEN?: string
+  MASTRO_BOT_TOKEN?: string
 }
 
 interface BrainPushPayload {
@@ -150,6 +157,7 @@ app.post('/api/webhook/github', async (c) => {
     result:
       | { ok: true; board_sha?: string; commit_url?: string; moved_id: string }
       | { ok: false; error: string; current_section?: string; status?: number; detail?: string }
+    guard_layer?: { outcome: string; action_id: string; verifier_outcome: string }
   }> = []
 
   let parsedBoard: ParsedOpsBoard | null = null
@@ -179,8 +187,24 @@ app.post('/api/webhook/github', async (c) => {
     const firstLine = detected.commitMessage.split('\n')[0].slice(0, 100)
     const summary = `${huntInfo.clue} shipped (${firstLine || 'auto-claim'})`
     const evidenceUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${detected.commitSha}`
-    const result = await completeOpsItem(c.env, item.id, summary, evidenceUrl)
-    opsResults.push({ path: detected.path, hunt: huntInfo.hunt, ops_id: item.id, result })
+    const guarded = await completeOpsItemGuarded(c.env, item, summary, evidenceUrl, {
+      trigger: {
+        type: 'github_webhook',
+        details: {
+          event: 'push',
+          repo: `${REPO_OWNER}/${REPO_NAME}`,
+          commit: detected.commitSha,
+          file_path: detected.path,
+        },
+      },
+    })
+    opsResults.push({
+      path: detected.path,
+      hunt: huntInfo.hunt,
+      ops_id: item.id,
+      result: guarded.result,
+      guard_layer: guarded.guard_layer,
+    })
   }
 
   // Clear the active hunt clue (existing behavior preserved)
@@ -532,17 +556,171 @@ async function completeOpsItem(
   })
 }
 
+// Guard-Layer-wrapped variant of completeOpsItem. When IDEMPOTENCY_KEYS is unbound,
+// falls back to the direct path so a partial rollout never blocks promotions.
+async function completeOpsItemGuarded(
+  env: Env,
+  item: OpsItem,
+  summary: string,
+  evidence_url: string | undefined,
+  ctx: { trigger: { type: 'github_webhook' | 'manual'; details: Record<string, unknown> } }
+): Promise<{
+  result:
+    | { ok: true; board_sha?: string; commit_url?: string; moved_id: string }
+    | { ok: false; error: string; current_section?: string; status?: number; detail?: string }
+  guard_layer?: { outcome: string; action_id: string; verifier_outcome: string }
+}> {
+  if (!env.IDEMPOTENCY_KEYS) {
+    const result = await completeOpsItem(env, item.id, summary, evidence_url)
+    return { result }
+  }
+
+  // Build verifier params from the OPS row's status_note. Convention v1:
+  //   - status_note may include "health=https://..." to specify substrate probe URL
+  //   - commit_sha is taken from the webhook payload for ci_run_check
+  // If no health URL is parseable, the verifier returns passed:false → Guard
+  // Layer blocks promotion (FALSE COMPLETE risk averted, Ship's Doctor pings).
+  const healthUrl = extractHealthUrl(item.status_note)
+  const commit_sha =
+    typeof ctx.trigger.details.commit === 'string'
+      ? (ctx.trigger.details.commit as string)
+      : undefined
+  const verifierParams: Record<string, unknown> = {
+    url: healthUrl,
+    expected_status: 200,
+    repo: `${REPO_OWNER}/${REPO_NAME}`,
+    commit_sha,
+  }
+
+  type PromoteResult =
+    | { ok: true; board_sha?: string; commit_url?: string; moved_id: string }
+    | { ok: false; error: string; current_section?: string; status?: number; detail?: string }
+  // Use a box so TS doesn't narrow the let-binding to `null` after await.
+  const promotedRef: { current: PromoteResult | null } = { current: null }
+
+  const guardEnv = env as unknown as GuardLayerEnv
+  const guardRes = await guardLayer(guardEnv, {
+    actor: 'ops-board-agent',
+    intent: 'ops_board_promote',
+    trigger: ctx.trigger,
+    action: {
+      type: 'ops_board_promote',
+      target: item.id,
+      params: { from: item.section, to: 'COMPLETED', summary },
+      evidence_url,
+    },
+    verifierParams,
+    executeAction: async () => {
+      const result = await completeOpsItem(env, item.id, summary, evidence_url)
+      promotedRef.current = result
+      if (!result.ok) {
+        throw new Error(`promote_failed: ${result.error}`)
+      }
+      return {
+        detail: `OPS ${item.id} promoted ${item.section}→COMPLETED via Guard Layer`,
+        reversible_via: {
+          command: 'ops_board_reopen',
+          params: { id: item.id },
+          estimated_difficulty: 'trivial',
+          requires_confirmation: false,
+        },
+      }
+    },
+  })
+
+  const summary_meta = {
+    outcome: guardRes.outcome,
+    action_id: guardRes.evidence.action_id,
+    verifier_outcome: guardRes.evidence.verifier_outcome,
+  }
+
+  const promoted = promotedRef.current
+  if (guardRes.outcome === 'applied' && promoted && promoted.ok) {
+    return { result: promoted, guard_layer: summary_meta }
+  }
+  if (guardRes.outcome === 'blocked_verifier') {
+    return {
+      result: {
+        ok: false,
+        error: 'blocked_verifier',
+        detail: guardRes.evidence.outcome_detail,
+      },
+      guard_layer: summary_meta,
+    }
+  }
+  if (guardRes.outcome === 'noop_duplicate') {
+    return {
+      result: {
+        ok: true,
+        moved_id: item.id,
+        board_sha: undefined,
+        commit_url: undefined,
+      },
+      guard_layer: summary_meta,
+    }
+  }
+  // failed_error or applied-but-execute-callback-threw
+  return {
+    result:
+      promoted && !promoted.ok
+        ? promoted
+        : { ok: false, error: 'guard_layer_error', detail: guardRes.evidence.outcome_detail },
+    guard_layer: summary_meta,
+  }
+}
+
+function extractHealthUrl(status_note: string | null | undefined): string | undefined {
+  if (!status_note) return undefined
+  const m = status_note.match(/health=(\S+)/)
+  return m ? m[1] : undefined
+}
+
 // POST /api/ops/complete — body { id, summary, evidence_url? }
+// Wrapped through Guard Layer (P0.5) when IDEMPOTENCY_KEYS is bound:
+//   - idempotency check (replay-safe)
+//   - health_probe + ci_run_check verifiers BEFORE promotion
+//   - audit log → brain/06-meta/auto-actions/
+//   - Ship's Doctor ping on block/failure
+// Falls back to direct call when KV is unbound (rollout-safe).
 app.post('/api/ops/complete', async (c) => {
   let body: { id?: string; summary?: string; evidence_url?: string }
   try { body = await c.req.json() } catch { return c.json({ error: 'bad_json' }, 400) }
   const { id, summary, evidence_url } = body
   if (!id || !summary) return c.json({ error: 'missing_fields', hint: '{id, summary, evidence_url?}' }, 400)
 
-  const result = await completeOpsItem(c.env, id, summary, evidence_url)
+  // Look up OPS item so Guard Layer can attribute the action correctly.
+  // Avoid a fetch when KV is unbound (keeps the legacy path fast).
+  if (!c.env.IDEMPOTENCY_KEYS) {
+    const result = await completeOpsItem(c.env, id, summary, evidence_url)
+    return c.json(
+      result,
+      result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500))
+    )
+  }
+
+  const headers = githubHeaders(c.env.GITHUB_TOKEN)
+  const file = await getFileContent(OPS_BOARD_PATH, headers)
+  const parsed = file ? parseOpsBoard(decodeBase64Content(file.content)) : null
+  const item = parsed?.sections.active.find((i) => i.id === id)
+  if (!item) {
+    // Defer to legacy handler to keep error semantics (not_found vs not_in_active).
+    const result = await completeOpsItem(c.env, id, summary, evidence_url)
+    return c.json(
+      result,
+      result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500))
+    )
+  }
+
+  const guarded = await completeOpsItemGuarded(c.env, item, summary, evidence_url, {
+    trigger: {
+      type: 'manual',
+      details: { route: '/api/ops/complete' },
+    },
+  })
+  const r = guarded.result
   return c.json(
-    result,
-    result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500))
+    { ...r, guard_layer: guarded.guard_layer },
+    r.ok ? 200 : (r.error === 'not_found' ? 404 : (r.error === 'not_in_active' ? 409 : r.error === 'blocked_verifier' ? 409 : 500))
   )
 })
 
