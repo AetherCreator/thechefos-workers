@@ -868,8 +868,184 @@ app.post('/api/ops/escalate', async (c) => {
   })
 })
 
+// ─── Playtester Reports ──────────────────────────────────────────
+// CI-driven smoke test reports from aether-chronicles (Godot) + chefos (Playwright).
+// Shipped 2026-05-16 to unblock Layer-1/Layer-2 playtester pipeline (Grok narrated
+// implementation without write tools; chat-Claude drafted schema; this route ships it).
+
+interface PlaytesterScreen {
+  screen: string
+  status: 'pass' | 'fail'
+  error: string | null
+  console?: string[]
+}
+
+interface PlaytesterPayload {
+  app: 'chefos' | 'aether-chronicles'
+  run_id: string
+  timestamp: string
+  status: 'pass' | 'fail' | 'partial'
+  results: PlaytesterScreen[]
+  meta?: Record<string, unknown>
+}
+
+const PLAYTESTER_APPS = new Set(['chefos', 'aether-chronicles'])
+const PLAYTESTER_STATUSES = new Set(['pass', 'fail', 'partial'])
+const PLAYTESTER_KV_TTL_SECONDS = 60 * 60 * 24 * 90 // 90 days
+
+app.use('/api/playtester/*', async (c, next) => {
+  const secret = c.req.header('x-webhook-secret')
+  if (!secret || secret !== c.env.WEBHOOK_SECRET) {
+    return c.json({ error: 'Unauthorized — invalid or missing webhook secret' }, 401)
+  }
+  await next()
+})
+
+// POST /api/playtester/report — accept CI smoke test report
+app.post('/api/playtester/report', async (c) => {
+  let body: PlaytesterPayload
+  try {
+    body = await c.req.json<PlaytesterPayload>()
+  } catch {
+    return c.json({ error: 'bad_json' }, 400)
+  }
+
+  // Validation
+  if (!body.app || !PLAYTESTER_APPS.has(body.app)) {
+    return c.json({ error: 'invalid_app', hint: "must be 'chefos' or 'aether-chronicles'" }, 400)
+  }
+  if (!body.run_id || typeof body.run_id !== 'string' || body.run_id.length > 200) {
+    return c.json({ error: 'invalid_run_id' }, 400)
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(body.run_id)) {
+    return c.json({ error: 'invalid_run_id_chars', hint: 'alphanumeric + . _ - only' }, 400)
+  }
+  if (!body.status || !PLAYTESTER_STATUSES.has(body.status)) {
+    return c.json({ error: 'invalid_status', hint: "must be 'pass', 'fail', or 'partial'" }, 400)
+  }
+  if (!body.timestamp || typeof body.timestamp !== 'string') {
+    return c.json({ error: 'invalid_timestamp' }, 400)
+  }
+  if (!Array.isArray(body.results)) {
+    return c.json({ error: 'invalid_results', hint: 'must be array of {screen, status, error}' }, 400)
+  }
+
+  const total = body.results.length
+  const failures = body.results.filter((r) => r && r.status === 'fail')
+  const failedScreens = failures.map((r) => r.screen).slice(0, 20)
+
+  // 1. Write full report to KV
+  const kvKey = `playtester:run:${body.app}:${body.run_id}`
+  try {
+    await c.env.SESSION_KV.put(kvKey, JSON.stringify(body), {
+      expirationTtl: PLAYTESTER_KV_TTL_SECONDS,
+    })
+  } catch (err) {
+    return c.json({ error: 'kv_write_failed', details: String(err) }, 500)
+  }
+
+  // 2. Write brain node (forensic record of every run, pass or fail)
+  const isoDate = body.timestamp.slice(0, 10) // YYYY-MM-DD from ISO8601
+  const brainPath = `brain/05-leads/_playtester/${isoDate}/${body.app}-${body.run_id}.json`
+  const reportRecord = {
+    ...body,
+    summary: {
+      total,
+      failures: failures.length,
+      failed_screens: failedScreens,
+    },
+    received_at: new Date().toISOString(),
+  }
+  const reportJson = JSON.stringify(reportRecord, null, 2)
+  const contentBase64 = btoa(unescape(encodeURIComponent(reportJson)))
+  const headers = githubHeaders(c.env.GITHUB_TOKEN)
+  let brainCommitSha: string | null = null
+  let brainWriteError: string | null = null
+
+  try {
+    const createRes = await fetch(
+      `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${brainPath}`,
+      {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `playtester: ${body.app}/${body.run_id} ${body.status} (${failures.length}/${total} failed)`,
+          content: contentBase64,
+          committer: COMMITTER,
+        }),
+      }
+    )
+    if (createRes.ok) {
+      const createData = await createRes.json() as { commit: { sha: string } }
+      brainCommitSha = createData.commit.sha
+    } else {
+      const errText = await createRes.text()
+      brainWriteError = `github ${createRes.status}: ${errText.slice(0, 200)}`
+    }
+  } catch (err) {
+    brainWriteError = `fetch_failed: ${String(err).slice(0, 200)}`
+  }
+
+  // 3. On fail/partial: send Ship's Doctor Telegram ping
+  let pingResult: 'sent' | 'skipped' | 'failed' = 'skipped'
+  if (body.status !== 'pass') {
+    const token = c.env.SHIPS_DOCTOR_BOT_TOKEN || c.env.MASTRO_BOT_TOKEN
+    const chatId = c.env.TYLER_CHAT_ID || '6091970994'
+    if (token) {
+      const screensTxt = failedScreens.length > 0 ? failedScreens.join(', ') : '(no screens listed)'
+      const msg =
+        `🩺 Playtester ${body.status.toUpperCase()} — ${body.app}\n` +
+        `Run: ${body.run_id}\n` +
+        `Failed: ${failures.length}/${total} → ${screensTxt}\n` +
+        `KV: ${kvKey}` +
+        (brainCommitSha ? `\nBrain: ${brainPath}@${brainCommitSha.slice(0, 8)}` : '')
+      try {
+        const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: msg }),
+          signal: AbortSignal.timeout(8000),
+        })
+        pingResult = tgRes.ok ? 'sent' : 'failed'
+      } catch {
+        pingResult = 'failed'
+      }
+    }
+  }
+
+  return c.json({
+    ok: true,
+    kv_key: kvKey,
+    brain_path: brainPath,
+    brain_sha: brainCommitSha,
+    brain_write_error: brainWriteError,
+    ping: pingResult,
+    summary: { total, failures: failures.length, status: body.status },
+  })
+})
+
+// GET /api/playtester/run/:app/:run_id — fetch a specific run from KV
+app.get('/api/playtester/run/:app/:run_id', async (c) => {
+  const secret = c.req.header('x-webhook-secret')
+  if (!secret || secret !== c.env.WEBHOOK_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  const { app: appName, run_id } = c.req.param()
+  if (!PLAYTESTER_APPS.has(appName)) {
+    return c.json({ error: 'invalid_app' }, 400)
+  }
+  const kvKey = `playtester:run:${appName}:${run_id}`
+  const raw = await c.env.SESSION_KV.get(kvKey)
+  if (!raw) return c.json({ error: 'not_found', kv_key: kvKey }, 404)
+  try {
+    return c.json(JSON.parse(raw))
+  } catch {
+    return c.json({ error: 'corrupt_kv_payload', kv_key: kvKey }, 500)
+  }
+})
+
 // Health check
-app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', version: '0.6.0', features: ['brain-push', 'session-state', 'github-webhook', 'ops-board'] }))
+app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', version: '0.7.0', features: ['brain-push', 'session-state', 'github-webhook', 'ops-board', 'playtester'] }))
 
 export default app
 
