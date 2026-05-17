@@ -894,12 +894,25 @@ const PLAYTESTER_STATUSES = new Set(['pass', 'fail', 'partial'])
 const PLAYTESTER_KV_TTL_SECONDS = 60 * 60 * 24 * 90 // 90 days
 
 app.use('/api/playtester/*', async (c, next) => {
+  // Health probe is public — no secret required
+  if (c.req.path === '/api/playtester/health') {
+    return next()
+  }
   const secret = c.req.header('x-webhook-secret')
   if (!secret || secret !== c.env.WEBHOOK_SECRET) {
     return c.json({ error: 'Unauthorized — invalid or missing webhook secret' }, 401)
   }
   await next()
 })
+
+// GET /api/playtester/health — public probe (no auth)
+app.get('/api/playtester/health', (c) => c.json({
+  status: 'ok',
+  worker: 'thechefos-brain-write',
+  module: 'playtester',
+  version: '0.7.0',
+  routes: ['POST /api/playtester/report', 'GET /api/playtester/run/:app/:run_id']
+}))
 
 // POST /api/playtester/report — accept CI smoke test report
 app.post('/api/playtester/report', async (c) => {
