@@ -1,0 +1,12 @@
+name = "carpenter-bridge"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+account_id = "cc231edbff18405233612d7afb657f1f"
+
+[ai]
+binding = "AI"
+
+# No D1 binding — telemetry writes come from the InfiniVeg-side runner (H2) via REST API.
+
+[observability]
+enabled = true

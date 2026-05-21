@@ -505,3 +505,43 @@ jobs:
           WEBHOOK_SECRET: ${{ secrets.MAPMAKER_WEBHOOK_SECRET }}
           BRAIN_WRITE: ${{ secrets.LOCKE_BRAIN_WRITE_SECRET }}
           FORGE_OPS_CHAT_ID: ${{ secrets.FORGE_OPS_CHAT_ID }}
+  deploy-carpenter-bridge:
+    name: Deploy Carpenter Bridge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check if package exists
+        id: check
+        run: |
+          if [ -f packages/carpenter-bridge/wrangler.toml ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "📦 packages/carpenter-bridge/ present — proceeding with deploy"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "📦 packages/carpenter-bridge/ not yet shipped — skipping"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.exists == 'true'
+        with:
+          node-version: '20'
+      - name: Deploy
+        if: steps.check.outputs.exists == 'true'
+        working-directory: packages/carpenter-bridge
+        run: |
+          npm install --legacy-peer-deps
+          npx wrangler deploy --keep-vars
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      - name: Set Worker secrets (fails-soft)
+        # CARPENTER_BRIDGE_TOKEN is set out-of-band via Cloudflare Worker Secrets REST API
+        # during H1 Clue 3 bootstrap (no GHA secret yet). For ongoing redeploys, Tyler can
+        # add CARPENTER_BRIDGE_TOKEN to repo GHA secrets and the line below will set it.
+        if: steps.check.outputs.exists == 'true'
+        working-directory: packages/carpenter-bridge
+        run: |
+          printf '%s' "$BRIDGE_TOKEN" | npx wrangler secret put CARPENTER_BRIDGE_TOKEN || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          BRIDGE_TOKEN: ${{ secrets.CARPENTER_BRIDGE_TOKEN }}
