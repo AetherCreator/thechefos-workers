@@ -1,4 +1,4 @@
-// carpenter-bridge — OpenAI-compat front for env.AI.run('@cf/moonshot/kimi-k2.6')
+// carpenter-bridge — OpenAI-compat front for env.AI.run('@cf/moonshotai/kimi-k2.6')
 // H1 Clue 3 (2026-05-22)
 // Spec: brain/06-meta/carpenter-design/03-dispatch-protocol-spec.md §Workers AI Kimi K2.6 — LOCKED
 
@@ -7,7 +7,7 @@ export interface Env {
   CARPENTER_BRIDGE_TOKEN: string;
 }
 
-const MODEL = "@cf/moonshot/kimi-k2.6";
+const MODEL = "@cf/moonshotai/kimi-k2.6";
 
 function constantTimeEq(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
