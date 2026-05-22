@@ -1,5 +1,7 @@
 // COMPLETE.md Validator — type definitions
-// C1 establishes core types; C2 wires evidence layer; C3 wires webhook.
+// C1: core types + parse-layer verdicts
+// C2: extended ValidatorEnv (CF_API_TOKEN/CF_ACCOUNT_ID for D1 cross-source)
+// C3: webhook integration adds run_id + dry_run flags
 
 import type { CompleteSchemaType } from './schema'
 
@@ -9,21 +11,25 @@ export type BlockedCode =
   | 'blocked_verify_log_malformed'
   | 'blocked_placeholder'
   | 'blocked_blocked_empty_flags'
-  | 'blocked_status_evidence_mismatch'   // C2
-  | 'blocked_push_unverified'            // C2
-  | 'blocked_d1_sha_mismatch'            // C2
-  | 'blocked_rate_limit'                 // C2
+  | 'blocked_status_evidence_mismatch'
+  | 'blocked_push_unverified'
+  | 'blocked_d1_sha_mismatch'
+  | 'blocked_rate_limit'
 
 export type Agent = 'carpenter' | 'hunter' | 'unknown'
 
 export type ValidatorVerdict =
   | { verdict: 'applied'; parsed: CompleteSchemaType; agent: Agent }
-  | { verdict: 'partial_pending_evidence'; parsed: CompleteSchemaType; agent: Agent }
-  | { verdict: BlockedCode; code: BlockedCode; message: string; diagnosis: Record<string, unknown> }
+  | {
+      verdict: BlockedCode
+      code: BlockedCode
+      message: string
+      diagnosis: Record<string, unknown>
+    }
 
 export interface ValidatorEnv {
   GITHUB_TOKEN: string
-  // C2 may add D1 binding fields if needed
+  // D1 cross-source SHA verification (carpenter agent + run_id). Soft-skip when absent.
   CF_API_TOKEN?: string
   CF_ACCOUNT_ID?: string
 }

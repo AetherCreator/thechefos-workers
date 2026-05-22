@@ -1,15 +1,16 @@
 // COMPLETE.md validator — entry point.
 //
-// C1 ships: V1 schema + V4 verify-log parse + V5 strict + H2 deltas
-//           (placeholder rejection, BLOCKED-flags semantics).
-// C2 ships: V2 status-evidence coherence + V3 push verification + D1 cross-source SHA.
-// C3 ships: webhook integration + COMPLETE_VALIDATOR_DRY_RUN gate + audit trail.
+// C1: V1 schema + V4 verify-log parse + V5 strict + H2 deltas
+//     (placeholder rejection, BLOCKED-flags semantics).
+// C2: V2 status-evidence + V3 push verification + D1 cross-source SHA (this clue).
+// C3: webhook integration + COMPLETE_VALIDATOR_DRY_RUN gate + audit trail.
 
 import { parse as parseYaml } from 'yaml'
 import type { ZodIssue } from 'zod'
 import { CompleteSchema } from './schema'
 import { parseVerifyLog } from './verify-log'
 import { inferAgent } from './agent'
+import { checkEvidence } from './evidence'
 import type { BlockedCode, ValidatorEnv, ValidatorVerdict } from './types'
 
 /**
@@ -19,10 +20,10 @@ import type { BlockedCode, ValidatorEnv, ValidatorVerdict } from './types'
  * as `blocked_placeholder` rather than the generic `blocked_schema`.
  *
  * Priority (most-specific first):
- *   1. blocked_fictional_field   — zod-strict "Unrecognized key"
- *   2. blocked_placeholder       — message mentions placeholder/__will_be_filled
+ *   1. blocked_fictional_field     — zod-strict "unrecognized_keys"
+ *   2. blocked_placeholder         — message mentions placeholder/__will_be_filled
  *   3. blocked_blocked_empty_flags — BLOCKED + empty flags refine
- *   4. blocked_schema            — fallthrough for any other shape failure
+ *   4. blocked_schema              — fallthrough for any other shape failure
  */
 function classifyZodIssues(issues: readonly ZodIssue[]): BlockedCode {
   for (const issue of issues) {
@@ -45,7 +46,7 @@ function classifyZodIssues(issues: readonly ZodIssue[]): BlockedCode {
 
 export async function validateComplete(
   yamlText: string,
-  _env: ValidatorEnv,
+  env: ValidatorEnv,
 ): Promise<ValidatorVerdict> {
   // 1. YAML parse
   let raw: unknown
@@ -99,15 +100,26 @@ export async function validateComplete(
     }
   }
 
-  // 4. Agent inference (informs C2 D1 lookup and C3 audit trail)
+  // 4. Agent inference (informs D1 cross-source check + C3 audit trail)
   const agent = inferAgent(parsed)
 
-  // 5. Substrate checks (V2 + V3 + D1) deferred to C2.
-  //    C2 replaces this stub with `await checkEvidence(parsed, _env)`.
-  return { verdict: 'partial_pending_evidence', parsed, agent }
+  // 5. V2 + V3 + D1 substrate checks
+  const evidence = await checkEvidence(parsed, env)
+  if (!evidence.ok) {
+    return {
+      verdict: evidence.code,
+      code: evidence.code,
+      message: evidence.message,
+      diagnosis: evidence.diagnosis,
+    }
+  }
+
+  return { verdict: 'applied', parsed, agent }
 }
 
-// Re-exports for downstream consumers (C2, C3, C5)
+// Re-exports for downstream consumers (C3, C5)
 export { CompleteSchema } from './schema'
 export type { CompleteSchemaType } from './schema'
 export type { Agent, BlockedCode, ValidatorEnv, ValidatorVerdict } from './types'
+export { checkEvidence } from './evidence'
+export type { EvidenceResult } from './evidence'

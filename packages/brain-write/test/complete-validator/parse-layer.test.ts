@@ -8,38 +8,43 @@ import type { ValidatorEnv } from '../../src/complete-validator/types'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FIXTURE_DIR = join(__dirname, '..', '..', 'src', 'complete-validator', '__fixtures__')
 
-const env: ValidatorEnv = { GITHUB_TOKEN: 'test-not-used-in-c1' }
+// C2: MSW is now active globally via vitest.config.ts setupFiles, so these
+// tests exercise the full pipeline (parse layer + evidence layer). The two
+// "valid-*" fixtures carry real H1/aether-chronicles SHAs that MSW returns
+// 200 for; everything else fails at parse layer before evidence is touched.
+const env: ValidatorEnv = { GITHUB_TOKEN: 'test-msw-mocked' }
 const load = (name: string) => readFileSync(join(FIXTURE_DIR, name), 'utf-8')
 
-describe('complete-validator C1 — parse layer', () => {
-  it('valid-carpenter.md → partial_pending_evidence (agent=carpenter)', async () => {
+describe('complete-validator C1 — parse layer (post-C2 pipeline integration)', () => {
+  it('valid-carpenter.md → applied (agent=carpenter, real H1 SHA via MSW)', async () => {
     const r = await validateComplete(load('valid-carpenter.md'), env)
-    expect(r.verdict).toBe('partial_pending_evidence')
-    if (r.verdict === 'partial_pending_evidence') {
+    expect(r.verdict).toBe('applied')
+    if (r.verdict === 'applied') {
       expect(r.agent).toBe('carpenter')
-      expect(r.parsed.hunt).toBe('carpenter-runner')
-      expect(r.parsed.clue).toBe(4)
+      expect(r.parsed.hunt).toBe('carpenter-foundation')
+      expect(r.parsed.clue).toBe(1)
       expect(r.parsed.status).toBe('COMPLETE')
     }
   })
 
-  it('valid-hunter.md → partial_pending_evidence (agent=hunter)', async () => {
+  it('valid-hunter.md → applied (agent=hunter, real aether SHA via MSW)', async () => {
     const r = await validateComplete(load('valid-hunter.md'), env)
-    expect(r.verdict).toBe('partial_pending_evidence')
-    if (r.verdict === 'partial_pending_evidence') {
+    expect(r.verdict).toBe('applied')
+    if (r.verdict === 'applied') {
       expect(r.agent).toBe('hunter')
       expect(r.parsed.work_repo).toBe('AetherCreator/aether-chronicles')
       expect(r.parsed.hunt_repo).toBe('AetherCreator/SuperClaude')
     }
   })
 
-  it('missing-field.md → blocked_schema', async () => {
+  it('missing-field.md → blocked_schema (fails at parse layer, evidence not called)', async () => {
     const r = await validateComplete(load('missing-field.md'), env)
     expect(r.verdict).toBe('blocked_schema')
     if (r.verdict === 'blocked_schema') {
-      // diagnosis should mention the missing field
       const allIssues = r.diagnosis.all_issues as Array<{ path: unknown[] }>
-      expect(allIssues.some(i => Array.isArray(i.path) && i.path.includes('work_repo'))).toBe(true)
+      expect(allIssues.some(i => Array.isArray(i.path) && i.path.includes('work_repo'))).toBe(
+        true,
+      )
     }
   })
 
@@ -66,7 +71,7 @@ describe('complete-validator C1 — parse layer', () => {
     expect(r.verdict).toBe('blocked_placeholder')
   })
 
-  it('blocked-empty-flags.md → blocked_blocked_empty_flags (BLOCKED requires non-empty flags)', async () => {
+  it('blocked-empty-flags.md → blocked_blocked_empty_flags', async () => {
     const r = await validateComplete(load('blocked-empty-flags.md'), env)
     expect(r.verdict).toBe('blocked_blocked_empty_flags')
   })
