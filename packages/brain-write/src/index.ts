@@ -161,7 +161,7 @@ app.post('/api/webhook/github', async (c) => {
   // brain/06-meta/auto-actions/ but downstream behavior is unchanged. In enforce,
   // blocked files halt their OPS-row promotion and fire a Ship's Doctor Telegram
   // ping. Per spec, ships in dry-run; 1-week grace before enforce flip.
-  const COMPLETE_MD_PATTERN = /^hunts\/[^/]+\/clue-[^/]+\/COMPLETE\.md$/
+  const COMPLETE_MD_PATTERN = /^hunts\/(?:[^/]+\/)+clue-[^/]+\/COMPLETE\.md$/
   const dryRun = c.env.COMPLETE_VALIDATOR_DRY_RUN === 'true'
   const validatorResults: Array<{
     file: string

@@ -231,6 +231,93 @@ describe('C3 webhook validator integration', () => {
     expect(json.ops_results[0].result.error).toBe('blocked_by_complete_validator')
   })
 
+  describe('COMPLETE_MD_PATTERN path gating (v1.1 broadened regex)', () => {
+    // ── Regex unit: test the pattern in isolation ────────────────────────
+    const PATTERN = /^hunts\/(?:[^/]+\/)+clue-[^/]+\/COMPLETE\.md$/
+
+    it.each([
+      ['hunts/foo/clue-1/COMPLETE.md', true],               // canonical 1-segment (unchanged)
+      ['hunts/_smoke/h2-c3/clue-1/COMPLETE.md', true],     // 2-segment namespace (NEW)
+      ['hunts/_smoke/foo/bar/clue-1/COMPLETE.md', true],   // 3-segment namespace (NEW)
+      ['hunts/clue-1/COMPLETE.md', false],                  // zero namespace segments
+      ['hunts/COMPLETE.md', false],                          // no namespace or clue
+      ['hunts/foo/COMPLETE.md', false],                      // no clue segment
+      ['hunts/foo/clue-1/something.md', false],              // not COMPLETE.md ($-anchor)
+      ['hunts/foo/clue-1/COMPLETE.md.bak', false],          // suffix after COMPLETE.md ($-anchor)
+    ])('regex: %s → matches=%s', (path, expected) => {
+      expect(PATTERN.test(path)).toBe(expected)
+    })
+
+    // ── Integration: nested-namespace paths → validator actually runs ────
+    it('2-segment namespace (_smoke/h2-c3) → validator processes file', async () => {
+      server.use(...recordAndPassthroughGithubGetFiles(calls, VALID_COMPLETE_MD))
+      const payload = makeWebhookPayload('hunts/_smoke/h2-c3/clue-1/COMPLETE.md', PUSH_COMMIT_SHA)
+      const body = JSON.stringify(payload)
+      const res = await app.request(
+        '/api/webhook/github',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signBody(body, GITHUB_WEBHOOK_SECRET),
+          },
+          body,
+        },
+        makeEnv(true),
+      )
+      expect(res.status).toBe(200)
+      const json = (await res.json()) as { validator_results: Array<{ file: string }> }
+      expect(json.validator_results).toHaveLength(1)
+      expect(json.validator_results[0].file).toBe('hunts/_smoke/h2-c3/clue-1/COMPLETE.md')
+    })
+
+    it('3-segment namespace (_smoke/foo/bar) → validator processes file', async () => {
+      server.use(...recordAndPassthroughGithubGetFiles(calls, VALID_COMPLETE_MD))
+      const payload = makeWebhookPayload(
+        'hunts/_smoke/foo/bar/clue-1/COMPLETE.md',
+        PUSH_COMMIT_SHA,
+      )
+      const body = JSON.stringify(payload)
+      const res = await app.request(
+        '/api/webhook/github',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signBody(body, GITHUB_WEBHOOK_SECRET),
+          },
+          body,
+        },
+        makeEnv(true),
+      )
+      expect(res.status).toBe(200)
+      const json = (await res.json()) as { validator_results: Array<{ file: string }> }
+      expect(json.validator_results).toHaveLength(1)
+      expect(json.validator_results[0].file).toBe('hunts/_smoke/foo/bar/clue-1/COMPLETE.md')
+    })
+
+    it('zero-segment path (hunts/clue-1/COMPLETE.md) → validator skips', async () => {
+      server.use(...recordAndPassthroughGithubGetFiles(calls, VALID_COMPLETE_MD))
+      const payload = makeWebhookPayload('hunts/clue-1/COMPLETE.md', PUSH_COMMIT_SHA)
+      const body = JSON.stringify(payload)
+      const res = await app.request(
+        '/api/webhook/github',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-hub-signature-256': signBody(body, GITHUB_WEBHOOK_SECRET),
+          },
+          body,
+        },
+        makeEnv(true),
+      )
+      expect(res.status).toBe(200)
+      const json = (await res.json()) as { validator_results: Array<unknown> }
+      expect(json.validator_results).toHaveLength(0)
+    })
+  })
+
   it('invalid signature -> 401 (sanity, no validator side-effects)', async () => {
     server.use(...recordAndPassthroughGithubGetFiles(calls, VALID_COMPLETE_MD))
     const payload = makeWebhookPayload(
