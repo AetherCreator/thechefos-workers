@@ -8,7 +8,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "hono": "^4.0.0"
+    "hono": "^4.0.0",
+    "yaml": "^2.9.0",
+    "zod": "^3.22.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.0.0",
