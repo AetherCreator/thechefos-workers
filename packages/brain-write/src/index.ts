@@ -4,6 +4,7 @@ import { guardLayer, type GuardLayerEnv } from './guard-layer'
 import { resolveBypass, commitBypassAudit } from './ops-board/bypass'
 import { validateComplete } from './complete-validator'
 import { buildAuditEntry, commitAuditEntry } from './complete-validator/audit'
+import { parse as parseYaml } from 'yaml'
 import { pingShipsDoctor } from './complete-validator/ping'
 
 const REPO_OWNER = 'AetherCreator'
@@ -198,6 +199,21 @@ app.post('/api/webhook/github', async (c) => {
     const result = await validateComplete(fileText.text, c.env)
     const parsed = result.verdict === 'applied' ? result.parsed : null
     const agent = result.verdict === 'applied' ? result.agent : 'unknown'
+    // H3 v1.1 SubDiv #3: preserve source COMPLETE.md run_id in audit (distinct
+    // from audit's own collision-safe run_id). Validator's discriminated union
+    // discards parsed data on blocked verdicts; we re-parse YAML best-effort here.
+    let claimedRunId: string | undefined
+    try {
+      const probe = parseYaml(fileText.text) as unknown
+      if (probe && typeof probe === 'object') {
+        const candidate = (probe as Record<string, unknown>).run_id
+        if (typeof candidate === 'string' && candidate.trim()) {
+          claimedRunId = candidate.trim()
+        }
+      }
+    } catch {
+      // YAML didn't parse — claimedRunId stays undefined (blocked_schema yaml_error path).
+    }
     const entry = buildAuditEntry(
       result,
       parsed,
@@ -205,6 +221,7 @@ app.post('/api/webhook/github', async (c) => {
       detected.path,
       { after: detected.commitSha, repo: `${REPO_OWNER}/${REPO_NAME}` },
       dryRun,
+      claimedRunId,
     )
     const auditCommit = await commitAuditEntry(entry, c.env)
     const blocked = entry.verdict.startsWith('blocked_')

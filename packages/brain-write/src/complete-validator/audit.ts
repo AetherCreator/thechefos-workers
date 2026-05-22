@@ -25,6 +25,9 @@ export interface AuditTrailEntry {
   type: 'complete_validator'
   timestamp: string // ISO 8601 UTC
   run_id: string // from COMPLETE.md run_id field or generated
+  claimed_run_id?: string // H3 v1.1 SubDiv #3: source COMPLETE.md's run_id,
+  // preserved regardless of verdict. Informational; the audit's own `run_id`
+  // above is the collision-safe filename and remains UUID when parsed is null.
   hunt: string
   clue: number
   agent: Agent
@@ -59,13 +62,14 @@ export function buildAuditEntry(
   file: string,
   push: { after: string; repo: string },
   dryRun: boolean,
+  claimedRunId?: string, // H3 v1.1 SubDiv #3
 ): AuditTrailEntry {
   const diagnosis = 'diagnosis' in result ? result.diagnosis : {}
   // Best-effort run_id: COMPLETE.md field, then a fresh UUID. Including push.after
   // would force per-push uniqueness, but it'd also tie the audit row to the push
   // SHA which makes filtering harder. UUID per run is the spec-conformant move.
   const runId = parsed?.run_id?.trim() || crypto.randomUUID()
-  return {
+  const entry: AuditTrailEntry = {
     type: 'complete_validator',
     timestamp: new Date().toISOString(),
     run_id: runId,
@@ -79,6 +83,11 @@ export function buildAuditEntry(
     push_sha: push.after,
     push_repo: push.repo,
   }
+  const cri = claimedRunId?.trim()
+  if (cri) {
+    entry.claimed_run_id = cri
+  }
+  return entry
 }
 
 export interface CommitAuditResult {
