@@ -64,7 +64,7 @@ export function buildAuditEntry(
   // Best-effort run_id: COMPLETE.md field, then a fresh UUID. Including push.after
   // would force per-push uniqueness, but it'd also tie the audit row to the push
   // SHA which makes filtering harder. UUID per run is the spec-conformant move.
-  const runId = parsed?.run_id ?? crypto.randomUUID()
+  const runId = parsed?.run_id?.trim() || crypto.randomUUID()
   return {
     type: 'complete_validator',
     timestamp: new Date().toISOString(),
