@@ -1,6 +1,9 @@
 // packages/brain-write/src/index.ts
 import { Hono } from 'hono'
 import { guardLayer, type GuardLayerEnv } from './guard-layer'
+import { validateComplete } from './complete-validator'
+import { buildAuditEntry, commitAuditEntry } from './complete-validator/audit'
+import { pingShipsDoctor } from './complete-validator/ping'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -23,6 +26,10 @@ export interface Env {
   TYLER_CHAT_ID?: string
   SHIPS_DOCTOR_BOT_TOKEN?: string
   MASTRO_BOT_TOKEN?: string
+  // complete-validator (carpenter-h3-validator C3)
+  COMPLETE_VALIDATOR_DRY_RUN?: string // 'true' = dry-run (audit + log, no halt / no ping)
+  CF_API_TOKEN?: string // optional; enables D1 cross-source SHA verification
+  CF_ACCOUNT_ID?: string // optional; enables D1 cross-source SHA verification
 }
 
 interface BrainPushPayload {
@@ -147,6 +154,75 @@ app.post('/api/webhook/github', async (c) => {
     return c.json({ ok: true, action: 'no COMPLETE.md detected' })
   }
 
+  // Validator pass (carpenter-h3-validator C3): structurally enforce COMPLETE.md
+  // shape + substrate. Runs before OPS-row routing so blocked files don't promote
+  // downstream. In dry-run, every COMPLETE.md push still emits an audit entry to
+  // brain/06-meta/auto-actions/ but downstream behavior is unchanged. In enforce,
+  // blocked files halt their OPS-row promotion and fire a Ship's Doctor Telegram
+  // ping. Per spec, ships in dry-run; 1-week grace before enforce flip.
+  const COMPLETE_MD_PATTERN = /^hunts\/[^/]+\/clue-[^/]+\/COMPLETE\.md$/
+  const dryRun = c.env.COMPLETE_VALIDATOR_DRY_RUN === 'true'
+  const validatorResults: Array<{
+    file: string
+    verdict: string
+    blocked: boolean
+    dry_run: boolean
+    audit_path?: string
+    audit_commit_sha?: string
+    audit_error?: string
+    ping?: { ok: boolean; relay_status?: number; relay_body?: string; error?: string }
+  }> = []
+  const blockedFiles = new Set<string>()
+
+  for (const detected of completeMdPaths) {
+    if (!COMPLETE_MD_PATTERN.test(detected.path)) {
+      // Non-hunt COMPLETE.md — skip validator (extractHuntInfo will reject downstream).
+      continue
+    }
+    const fileText = await fetchFileTextAtRef(
+      detected.path,
+      detected.commitSha,
+      c.env.GITHUB_TOKEN,
+    )
+    if (!fileText.ok) {
+      validatorResults.push({
+        file: detected.path,
+        verdict: 'fetch_error',
+        blocked: false,
+        dry_run: dryRun,
+        audit_error: fileText.error,
+      })
+      continue
+    }
+    const result = await validateComplete(fileText.text, c.env)
+    const parsed = result.verdict === 'applied' ? result.parsed : null
+    const agent = result.verdict === 'applied' ? result.agent : 'unknown'
+    const entry = buildAuditEntry(
+      result,
+      parsed,
+      agent,
+      detected.path,
+      { after: detected.commitSha, repo: `${REPO_OWNER}/${REPO_NAME}` },
+      dryRun,
+    )
+    const auditCommit = await commitAuditEntry(entry, c.env)
+    const blocked = entry.verdict.startsWith('blocked_')
+    const vr: (typeof validatorResults)[number] = {
+      file: detected.path,
+      verdict: entry.verdict,
+      blocked,
+      dry_run: dryRun,
+      audit_path: auditCommit.path,
+      audit_commit_sha: auditCommit.commit_sha,
+      audit_error: auditCommit.ok ? undefined : auditCommit.error,
+    }
+    if (blocked && !dryRun) {
+      blockedFiles.add(detected.path)
+      vr.ping = await pingShipsDoctor(entry)
+    }
+    validatorResults.push(vr)
+  }
+
   // Try to auto-claim a matching ACTIVE OPS row for each detected COMPLETE.md.
   // Reads OPS-BOARD once for matching, then calls completeOpsItem (which re-fetches
   // for atomic SHA-aware moveLine + GitHub PUT under retryOnce).
@@ -170,6 +246,13 @@ app.post('/api/webhook/github', async (c) => {
   }
 
   for (const detected of completeMdPaths) {
+    if (blockedFiles.has(detected.path)) {
+      opsResults.push({
+        path: detected.path,
+        result: { ok: false, error: 'blocked_by_complete_validator' },
+      })
+      continue
+    }
     const huntInfo = extractHuntInfo(detected.path)
     if (!huntInfo) {
       opsResults.push({ path: detected.path, result: { ok: false, error: 'not_hunt_path' } })
@@ -220,6 +303,8 @@ app.post('/api/webhook/github', async (c) => {
     previous_clue: previousClue,
     complete_md_count: completeMdPaths.length,
     ops_results: opsResults,
+    validator_results: validatorResults,
+    validator_dry_run: dryRun,
   })
 })
 
@@ -1292,6 +1377,29 @@ function githubHeaders(token: string): Record<string, string> {
 interface GitHubFileContent {
   sha: string
   content: string
+}
+
+async function fetchFileTextAtRef(
+  path: string,
+  ref: string,
+  token: string,
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const url = `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}?ref=${ref}`
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.raw',
+        'User-Agent': 'thechefos-workers-complete-validator/1.0',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    })
+    if (!res.ok) return { ok: false, error: `github_${res.status}` }
+    const text = await res.text()
+    return { ok: true, text }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 async function getFileContent(
