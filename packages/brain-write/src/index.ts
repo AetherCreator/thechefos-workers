@@ -1,6 +1,7 @@
 // packages/brain-write/src/index.ts
 import { Hono } from 'hono'
 import { guardLayer, type GuardLayerEnv } from './guard-layer'
+import { resolveBypass, commitBypassAudit } from './ops-board/bypass'
 import { validateComplete } from './complete-validator'
 import { buildAuditEntry, commitAuditEntry } from './complete-validator/audit'
 import { pingShipsDoctor } from './complete-validator/ping'
@@ -658,6 +659,44 @@ async function completeOpsItemGuarded(
   if (!env.IDEMPOTENCY_KEYS) {
     const result = await completeOpsItem(env, item.id, summary, evidence_url)
     return { result }
+  }
+
+  // carpenter-h3-validator C5: validator-aware + paper-design bypass.
+  // Runs BEFORE the Guard Layer verifier pass so paper-design rows
+  // (which have no deployable health URL) and validator-already-substantiated
+  // rows can close without health_probe blocking. Existing verifier path
+  // is preserved verbatim for rows hitting neither bypass.
+  const bypass = await resolveBypass(item.status_note, env)
+  if (bypass.kind !== 'none') {
+    const result = await completeOpsItem(env, item.id, summary, evidence_url)
+    const ts = new Date().toISOString()
+    // Audit emission is soft-fail; the promote already happened.
+    await commitBypassAudit(
+      bypass.kind === 'validator'
+        ? {
+            type: 'ops_board_complete_bypass',
+            kind: 'validator',
+            ops_id: item.id,
+            timestamp: ts,
+            validator_run_id: bypass.entry.run_id,
+            validator_file: bypass.entry.file,
+          }
+        : {
+            type: 'ops_board_complete_bypass',
+            kind: 'paper_design',
+            ops_id: item.id,
+            timestamp: ts,
+          },
+      env,
+    )
+    return {
+      result,
+      guard_layer: {
+        outcome: `bypassed_${bypass.kind}`,
+        action_id: `bypass-${item.id}-${Date.parse(ts)}`,
+        verifier_outcome: 'skipped',
+      },
+    }
   }
 
   // Build verifier params from the OPS row's status_note. Convention v1:
