@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { requireApiKey } from "./auth";
 import { getSessionState, putSessionState } from "./handlers/session-state";
-import { getDashboard } from "./handlers/dashboard";
+import { getDashboard, getManifest } from "./handlers/dashboard";
 import { postTelegramQuests } from "./handlers/telegram";
 import { getHealth } from "./handlers/health";
 
@@ -34,6 +34,8 @@ app.put("/api/session/state", async (c) => {
 });
 
 app.get("/dashboard", getDashboard);
+
+app.get("/manifest.json", getManifest);
 
 app.post("/api/telegram-quests", postTelegramQuests);
 
