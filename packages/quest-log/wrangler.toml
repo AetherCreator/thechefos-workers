@@ -1,0 +1,17 @@
+name = "thechefos-quest-log"
+main = "src/index.ts"
+compatibility_date = "2026-05-23"
+account_id = "cc231edbff18405233612d7afb657f1f"
+
+[[kv_namespaces]]
+binding = "QUEST_LOG_STATE"
+id = "278556fce7834bc58250209f8d430e5f"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "superclaude-brain"
+database_id = "c9f55aaf-ac80-4111-b78e-9339a2f8e377"
+
+[vars]
+GITHUB_OWNER = "AetherCreator"
+GITHUB_REPO_SUPERCLAUDE = "SuperClaude"
