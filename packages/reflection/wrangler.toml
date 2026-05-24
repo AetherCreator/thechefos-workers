@@ -8,7 +8,7 @@ database_name = "superclaude-brain"
 database_id = "c9f55aaf-ac80-4111-b78e-9339a2f8e377"
 
 [triggers]
-crons = ["0 22 * * 0"]  # Sunday 22:00 UTC = 5PM ET
+crons = ["0 22 * * SUN"]  # Sunday 22:00 UTC = 5PM ET
 
 [vars]
 WORKER_VERSION = "0.1.0"
