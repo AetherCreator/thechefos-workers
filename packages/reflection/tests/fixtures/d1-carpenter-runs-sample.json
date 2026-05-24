@@ -1,0 +1,38 @@
+[
+  {
+    "run_id": "c0ffee00-0001-4000-8000-111122223333",
+    "hunt": "carpenter-foundation",
+    "clue": "5",
+    "agent_variant": "claude-sonnet-4-6",
+    "exit_reason": "work_done",
+    "turn_count": 24,
+    "tool_calls": 87,
+    "work_commit": "abc1234567890abcdef1234567890abcdef123456",
+    "cost_usd": 0.0412,
+    "completed_at": "2026-05-22T14:30:00Z"
+  },
+  {
+    "run_id": "c0ffee00-0002-4000-8000-111122223334",
+    "hunt": "brain-search",
+    "clue": "2",
+    "agent_variant": "claude-sonnet-4-6",
+    "exit_reason": "max_turns",
+    "turn_count": 50,
+    "tool_calls": 210,
+    "work_commit": null,
+    "cost_usd": 0.0891,
+    "completed_at": "2026-05-23T09:15:00Z"
+  },
+  {
+    "run_id": "c0ffee00-0003-4000-8000-111122223335",
+    "hunt": "council",
+    "clue": "3",
+    "agent_variant": "claude-opus-4-7",
+    "exit_reason": "work_done",
+    "turn_count": 18,
+    "tool_calls": 64,
+    "work_commit": "def5678901234def5678901234def5678901234",
+    "cost_usd": null,
+    "completed_at": "2026-05-24T11:00:00Z"
+  }
+]

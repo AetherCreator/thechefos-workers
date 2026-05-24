@@ -1,0 +1,48 @@
+[
+  {
+    "run_id": "a1b2c3d4-0001-4000-8000-aabbccddeef1",
+    "date": "2026-05-22",
+    "verdict": "applied",
+    "action": "ops_board_complete",
+    "source_path": "hunts/carpenter-foundation/clue-5/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/abc1234"],
+    "flags": []
+  },
+  {
+    "run_id": "a1b2c3d4-0002-4000-8000-aabbccddeef2",
+    "date": "2026-05-22",
+    "verdict": "blocked_schema",
+    "action": "complete_validator",
+    "source_path": "hunts/brain-search/clue-2/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["missing_field_work_commit"]
+  },
+  {
+    "run_id": "a1b2c3d4-0003-4000-8000-aabbccddeef3",
+    "date": "2026-05-22",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/council/clue-3/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/def5678"],
+    "flags": []
+  },
+  {
+    "run_id": "a1b2c3d4-0004-4000-8000-aabbccddeef4",
+    "date": "2026-05-22",
+    "verdict": "blocked_verifier",
+    "action": "complete_validator",
+    "source_path": "hunts/locke-harvest/clue-1/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["sha_mismatch"]
+  },
+  {
+    "run_id": "a1b2c3d4-0005-4000-8000-aabbccddeef5",
+    "date": "2026-05-22",
+    "verdict": "applied",
+    "action": "ops_board_complete",
+    "source_path": "hunts/quest-log/clue-4/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/ghi9012"],
+    "flags": [],
+    "extra_field": "defensively_parsed"
+  }
+]
