@@ -1,11 +1,18 @@
 import type { InputVolumes } from "../types";
+import type { ComputedMetrics } from "./schema";
+import { writeReflectionMarkdown } from "./writer";
 
 export function buildEmptyDigest(
   week: string,
   generatedAt: string,
   workerVersion: string,
-  inputVolumes: InputVolumes
+  inputVolumes: InputVolumes,
+  metrics?: ComputedMetrics
 ): string {
+  if (metrics !== undefined) {
+    return writeReflectionMarkdown(week, generatedAt, workerVersion, inputVolumes, metrics);
+  }
+
   const fm = [
     "---",
     `week_iso: ${week}`,

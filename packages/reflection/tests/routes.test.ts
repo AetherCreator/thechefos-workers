@@ -1,10 +1,20 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/types";
 
+function makeMockD1(): D1Database {
+  return {
+    prepare: (_sql: string) => ({
+      bind: (..._args: unknown[]) => ({
+        all: async () => ({ results: [], success: true, meta: {} }),
+      }),
+    }),
+  } as unknown as D1Database;
+}
+
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    BRAIN_D1: {} as D1Database,
+    BRAIN_D1: makeMockD1(),
     REFLECTION_API_SECRET: "test-secret",
     GITHUB_REFLECTION_PAT: "gh-pat",
     BRAIN_WRITE_API_SECRET: "bw-secret",
@@ -23,6 +33,15 @@ function authedRequest(path: string): Request {
     method: "POST",
     headers: { "X-Reflection-Key": "test-secret" },
   });
+}
+
+function stubFetchEmpty(): void {
+  vi.stubGlobal("fetch", async () => ({
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+    json: async () => ({}),
+  }));
 }
 
 describe("POST /api/reflect-now — week param validation", () => {
@@ -48,12 +67,14 @@ describe("POST /api/reflect-now — week param validation", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 200 with valid skeleton for ?week=2026-W21 + valid key", async () => {
+  it("returns 200 with computed digest for ?week=2026-W21 + valid key", async () => {
+    stubFetchEmpty();
     const res = await worker.fetch(
       authedRequest("/api/reflect-now?week=2026-W21"),
       makeEnv(),
       {} as ExecutionContext
     );
+    vi.unstubAllGlobals();
     expect(res.status).toBe(200);
     const body = await res.json() as {
       ok: boolean;
@@ -78,14 +99,12 @@ describe("POST /api/reflect-now — week param validation", () => {
       hunter_baseline_runs: 0,
     });
     expect(body.committed).toBe(false);
-    expect(body.commit_reason).toBe("scaffold");
     expect(body.notified).toBe(false);
-    expect(body.notify_reason).toBe("scaffold");
     expect(Array.isArray(body.filed_ops_rows)).toBe(true);
     expect(body.filed_ops_rows).toHaveLength(0);
     expect(body.digest_markdown).toContain("week_iso: 2026-W21");
     expect(body.digest_markdown).toContain("# Weekly Reflection — 2026-W21");
-    expect(body.digest_markdown).toContain("Scaffold emission from C1");
+    expect(body.digest_markdown).toContain("## 1. Auto-action accuracy");
   });
 });
 

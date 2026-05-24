@@ -1,0 +1,74 @@
+[
+  {
+    "run_id": "w21run-0001-4000-8000-111122223301",
+    "hunt": "reflection-worker",
+    "clue": "1",
+    "agent_variant": "claude-sonnet-4-6",
+    "exit_reason": "complete",
+    "turn_count": 22,
+    "tool_calls": 76,
+    "work_commit": "aaa0001234567890abcdef1234567890abcdef12",
+    "cost_usd": 0.0382,
+    "completed_at": "2026-05-18T15:00:00Z"
+  },
+  {
+    "run_id": "w21run-0002-4000-8000-111122223302",
+    "hunt": "brain-search",
+    "clue": "3",
+    "agent_variant": "claude-sonnet-4-6",
+    "exit_reason": "complete",
+    "turn_count": 18,
+    "tool_calls": 61,
+    "work_commit": "bbb0002345678901234567890123456789012345",
+    "cost_usd": 0.0291,
+    "completed_at": "2026-05-19T10:30:00Z"
+  },
+  {
+    "run_id": "w21run-0003-4000-8000-111122223303",
+    "hunt": "council",
+    "clue": "4",
+    "agent_variant": "claude-opus-4-7",
+    "exit_reason": "max_turns",
+    "turn_count": 30,
+    "tool_calls": 43,
+    "work_commit": null,
+    "cost_usd": 0.1240,
+    "completed_at": "2026-05-24T14:22:00Z"
+  },
+  {
+    "run_id": "w21run-0004-4000-8000-111122223304",
+    "hunt": "locke-harvest",
+    "clue": "3",
+    "agent_variant": "claude-sonnet-4-6",
+    "exit_reason": "complete",
+    "turn_count": 15,
+    "tool_calls": 52,
+    "work_commit": "ccc0003456789012345678901234567890123456",
+    "cost_usd": null,
+    "completed_at": "2026-05-21T09:45:00Z"
+  },
+  {
+    "run_id": "w21run-0005-4000-8000-111122223305",
+    "hunt": "mapmaker",
+    "clue": "2",
+    "agent_variant": "claude-sonnet-4-6",
+    "exit_reason": "error",
+    "turn_count": 5,
+    "tool_calls": 12,
+    "work_commit": null,
+    "cost_usd": 0.0054,
+    "completed_at": "2026-05-22T11:00:00Z"
+  },
+  {
+    "run_id": "w21run-0006-4000-8000-111122223306",
+    "hunt": "the-tightening",
+    "clue": "2",
+    "agent_variant": "claude-sonnet-4-6",
+    "exit_reason": "complete",
+    "turn_count": 27,
+    "tool_calls": 94,
+    "work_commit": "ddd0004567890123456789012345678901234567",
+    "cost_usd": 0.0521,
+    "completed_at": "2026-05-23T16:30:00Z"
+  }
+]

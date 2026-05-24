@@ -1,3 +1,5 @@
+import { isoWeekToDateRange } from "./auto-actions";
+
 export interface CarpenterRunRow {
   run_id: string;
   hunt: string;
@@ -20,21 +22,48 @@ export interface HunterBaselineRow {
   [key: string]: unknown;
 }
 
-// C2 implements real SQL with date range from the ISO week.
 export async function queryCarpenterRunsForWeek(
-  _db: D1Database,
-  _isoWeek: string
+  db: D1Database,
+  isoWeek: string
 ): Promise<CarpenterRunRow[]> {
-  // TODO(C2): SELECT * FROM carpenter_runs WHERE completed_at >= ? AND completed_at < ?
-  // using isoWeekToDateRange from auto-actions adapter.
-  return [];
+  const { start, end } = isoWeekToDateRange(isoWeek);
+  // end is Sunday; add 1 day to make the upper bound exclusive (Monday of next week)
+  const endExclusive = new Date(end + "T00:00:00Z");
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  const endStr = endExclusive.toISOString().slice(0, 10) + "T00:00:00Z";
+
+  const result = await db
+    .prepare(
+      `SELECT run_id, hunt, clue, agent_variant, exit_reason, turn_count, tool_calls,
+              work_commit, cost_usd, completed_at
+       FROM carpenter_runs
+       WHERE completed_at >= ? AND completed_at < ?
+       ORDER BY completed_at ASC`
+    )
+    .bind(start + "T00:00:00Z", endStr)
+    .all<CarpenterRunRow>();
+
+  return result.results ?? [];
 }
 
-// C2 implements real SQL for hunter_baseline_runs.
 export async function queryHunterBaselineForWeek(
-  _db: D1Database,
-  _isoWeek: string
+  db: D1Database,
+  isoWeek: string
 ): Promise<HunterBaselineRow[]> {
-  // TODO(C2): SELECT * FROM hunter_baseline_runs WHERE completed_at >= ? AND completed_at < ?
-  return [];
+  const { start, end } = isoWeekToDateRange(isoWeek);
+  const endExclusive = new Date(end + "T00:00:00Z");
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  const endStr = endExclusive.toISOString().slice(0, 10) + "T00:00:00Z";
+
+  const result = await db
+    .prepare(
+      `SELECT run_id, hunt, clue, verdict, completed_at
+       FROM hunter_baseline_runs
+       WHERE completed_at >= ? AND completed_at < ?
+       ORDER BY completed_at ASC`
+    )
+    .bind(start + "T00:00:00Z", endStr)
+    .all<HunterBaselineRow>();
+
+  return result.results ?? [];
 }

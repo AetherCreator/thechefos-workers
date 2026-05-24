@@ -11,14 +11,58 @@ export interface AutoActionEntry {
   [key: string]: unknown;
 }
 
-// C2 implements the real walk through brain/06-meta/auto-actions/{date}/*.json for the ISO week.
 export async function readAutoActionsForWeek(
-  _github: GithubContext,
-  _isoWeek: string
+  github: GithubContext,
+  isoWeek: string
 ): Promise<AutoActionEntry[]> {
-  // TODO(C2): list GitHub tree for brain/06-meta/auto-actions/{date}/ for each date in the week,
-  // fetch each *.json file, defensively parse into AutoActionEntry, collect and return.
-  return [];
+  const { start, end } = isoWeekToDateRange(isoWeek);
+  const dates = dateRange(start, end);
+  const entries: AutoActionEntry[] = [];
+
+  for (const date of dates) {
+    const dirPath = `brain/06-meta/auto-actions/${date}`;
+    const dirUrl = `https://api.github.com/repos/${github.owner}/${github.repo}/contents/${dirPath}`;
+
+    let files: Array<{ name: string; type: string; download_url: string }>;
+    try {
+      const res = await fetch(dirUrl, {
+        headers: {
+          Authorization: `Bearer ${github.pat}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "thechefos-reflection/0.1.0",
+        },
+      });
+      if (res.status === 404) continue;
+      if (!res.ok) {
+        console.warn(`[auto-actions] ${date}: ${res.status} ${res.statusText}`);
+        continue;
+      }
+      files = await res.json() as Array<{ name: string; type: string; download_url: string }>;
+    } catch (e) {
+      console.warn(`[auto-actions] fetch failed for ${date}: ${e}`);
+      continue;
+    }
+
+    for (const file of files) {
+      if (file.type !== "file" || !file.name.endsWith(".json")) continue;
+      try {
+        const raw = await fetch(file.download_url, {
+          headers: { "User-Agent": "thechefos-reflection/0.1.0" },
+        });
+        if (!raw.ok) continue;
+        const data = await raw.json();
+        if (Array.isArray(data)) {
+          for (const item of data) entries.push(parseAutoActionEntry(item));
+        } else {
+          entries.push(parseAutoActionEntry(data));
+        }
+      } catch (e) {
+        console.warn(`[auto-actions] parse failed for ${file.name}: ${e}`);
+      }
+    }
+  }
+
+  return entries;
 }
 
 export function parseAutoActionEntry(raw: unknown): AutoActionEntry {
@@ -43,7 +87,6 @@ export function parseAutoActionEntry(raw: unknown): AutoActionEntry {
   };
 }
 
-// Parse "YYYY-Www" to {start, end} in ISO 8601 date strings (Monday..Sunday).
 export function isoWeekToDateRange(isoWeek: string): { start: string; end: string } {
   const m = isoWeek.match(/^(\d{4})-W(\d{2})$/);
   if (!m) throw new Error(`invalid ISO week: ${isoWeek}`);
@@ -58,9 +101,19 @@ export function isoWeekToDateRange(isoWeek: string): { start: string; end: strin
 }
 
 function isoWeekToMonday(year: number, week: number): Date {
-  // Jan 4 is always in ISO week 1
   const jan4 = new Date(Date.UTC(year, 0, 4));
-  const dow = jan4.getUTCDay() || 7; // Mon=1..Sun=7
+  const dow = jan4.getUTCDay() || 7;
   const week1Monday = new Date(jan4.getTime() - (dow - 1) * 86400000);
   return new Date(week1Monday.getTime() + (week - 1) * 7 * 86400000);
+}
+
+function dateRange(start: string, end: string): string[] {
+  const dates: string[] = [];
+  const cur = new Date(start + "T00:00:00Z");
+  const endDate = new Date(end + "T00:00:00Z");
+  while (cur <= endDate) {
+    dates.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return dates;
 }

@@ -2,7 +2,11 @@ import { Hono } from "hono";
 import { requireReflectionKey } from "./auth";
 import { handleCronTrigger } from "./cron";
 import { buildEmptyDigest } from "./digest/empty";
-import type { Env, InputVolumes, ReflectNowResponse } from "./types";
+import { computeReflection } from "./engine/index";
+import { queryCarpenterRunsForWeek, queryHunterBaselineForWeek } from "./adapters/d1-queries";
+import { readAutoActionsForWeek } from "./adapters/auto-actions";
+import { readOpsBoardDeltasForWeek } from "./adapters/ops-board-diff";
+import type { Env, InputVolumes, ReflectNowResponse, GithubContext } from "./types";
 
 const WEEK_RE = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 
@@ -37,14 +41,39 @@ app.post("/api/reflect-now", async (c) => {
   const generatedAt = new Date().toISOString();
   const workerVersion = c.env.WORKER_VERSION ?? "0.1.0";
 
-  const inputVolumes: InputVolumes = {
-    auto_actions_files: 0,
-    ops_board_commits: 0,
-    carpenter_runs: 0,
-    hunter_baseline_runs: 0,
+  const github: GithubContext = {
+    owner: c.env.GITHUB_OWNER,
+    repo: c.env.GITHUB_REPO,
+    pat: c.env.GITHUB_REFLECTION_PAT,
   };
 
-  const digestMarkdown = buildEmptyDigest(week, generatedAt, workerVersion, inputVolumes);
+  const [carpenterRuns, hunterBaseline, autoActions, opsDeltas] = await Promise.allSettled([
+    queryCarpenterRunsForWeek(c.env.BRAIN_D1, week),
+    queryHunterBaselineForWeek(c.env.BRAIN_D1, week),
+    readAutoActionsForWeek(github, week),
+    readOpsBoardDeltasForWeek(github, week),
+  ]);
+
+  const inputVolumes: InputVolumes = {
+    auto_actions_files:
+      autoActions.status === "fulfilled" ? autoActions.value.length : 0,
+    ops_board_commits:
+      opsDeltas.status === "fulfilled" ? opsDeltas.value.length : 0,
+    carpenter_runs:
+      carpenterRuns.status === "fulfilled" ? carpenterRuns.value.length : 0,
+    hunter_baseline_runs:
+      hunterBaseline.status === "fulfilled" ? hunterBaseline.value.length : 0,
+  };
+
+  const metrics = await computeReflection(week, {
+    BRAIN_D1: c.env.BRAIN_D1,
+    GITHUB_REFLECTION_PAT: c.env.GITHUB_REFLECTION_PAT,
+    GITHUB_OWNER: c.env.GITHUB_OWNER,
+    GITHUB_REPO: c.env.GITHUB_REPO,
+    COST_TELEMETRY_URL: undefined,
+  });
+
+  const digestMarkdown = buildEmptyDigest(week, generatedAt, workerVersion, inputVolumes, metrics);
 
   const body: ReflectNowResponse = {
     ok: true,
@@ -54,9 +83,9 @@ app.post("/api/reflect-now", async (c) => {
     input_volumes: inputVolumes,
     digest_markdown: digestMarkdown,
     committed: false,
-    commit_reason: "scaffold",
+    commit_reason: "dry-run: commit=false",
     notified: false,
-    notify_reason: "scaffold",
+    notify_reason: "dry-run: notify=false",
     filed_ops_rows: [],
   };
 

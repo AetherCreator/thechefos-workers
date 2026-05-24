@@ -1,0 +1,12 @@
+{
+  "traffic_light": "yellow",
+  "neurons_used_estimate": 5400,
+  "neurons_remaining_estimate": 4600,
+  "neurons_cap": 10000,
+  "locke_fires_today": 1,
+  "council_fires_today": 2,
+  "schemer_fires_today": 1,
+  "reviewer_fires_today": 3,
+  "last_updated": "2026-05-24T20:00:00Z",
+  "basis": "session-file-count x calibration-constants"
+}

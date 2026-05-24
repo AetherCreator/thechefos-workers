@@ -1,10 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/types";
 
+function makeMockD1(): D1Database {
+  return {
+    prepare: (_sql: string) => ({
+      bind: (..._args: unknown[]) => ({
+        all: async () => ({ results: [], success: true, meta: {} }),
+      }),
+    }),
+  } as unknown as D1Database;
+}
+
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    BRAIN_D1: {} as D1Database,
+    BRAIN_D1: makeMockD1(),
     REFLECTION_API_SECRET: "correct-secret",
     GITHUB_REFLECTION_PAT: "gh-pat",
     BRAIN_WRITE_API_SECRET: "bw-secret",
@@ -45,6 +55,12 @@ describe("auth — X-Reflection-Key", () => {
   });
 
   it("returns 200 when X-Reflection-Key is correct", async () => {
+    vi.stubGlobal("fetch", async () => ({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: async () => ({}),
+    }));
     const res = await worker.fetch(
       new Request("http://localhost/api/reflect-now?week=2026-W21", {
         method: "POST",
@@ -53,6 +69,7 @@ describe("auth — X-Reflection-Key", () => {
       makeEnv(),
       {} as ExecutionContext
     );
+    vi.unstubAllGlobals();
     expect(res.status).toBe(200);
     const body = await res.json() as { ok: boolean };
     expect(body.ok).toBe(true);

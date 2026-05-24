@@ -1,0 +1,227 @@
+[
+  {
+    "run_id": "w21-0001-4000-8000-aabbccddeef1",
+    "date": "2026-05-18",
+    "verdict": "applied",
+    "action": "ops_board_complete",
+    "source_path": "hunts/reflection-worker/clue-1/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/aaa0001"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0002-4000-8000-aabbccddeef2",
+    "date": "2026-05-18",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/reflection-worker/clue-1/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/aaa0002"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0003-4000-8000-aabbccddeef3",
+    "date": "2026-05-19",
+    "verdict": "blocked_schema",
+    "action": "complete_validator",
+    "source_path": "hunts/brain-search/clue-3/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["missing_field_work_commit"]
+  },
+  {
+    "run_id": "w21-0004-4000-8000-aabbccddeef4",
+    "date": "2026-05-19",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/council/clue-4/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/bbb0004"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0005-4000-8000-aabbccddeef5",
+    "date": "2026-05-19",
+    "verdict": "applied",
+    "action": "ops_board_complete",
+    "source_path": "hunts/locke-harvest/clue-2/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/bbb0005"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0006-4000-8000-aabbccddeef6",
+    "date": "2026-05-20",
+    "verdict": "blocked_verifier",
+    "action": "complete_validator",
+    "source_path": "hunts/quest-log/clue-5/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["sha_mismatch"]
+  },
+  {
+    "run_id": "w21-0007-4000-8000-aabbccddeef7",
+    "date": "2026-05-20",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/carpenter-foundation/clue-6/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/ccc0007"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0008-4000-8000-aabbccddeef8",
+    "date": "2026-05-20",
+    "verdict": "applied",
+    "action": "ops_board_complete",
+    "source_path": "hunts/brain-write/clue-7/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/ccc0008"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0009-4000-8000-aabbccddeef9",
+    "date": "2026-05-21",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/mapmaker/clue-2/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/ddd0009"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0010-4000-8000-aabbccddee10",
+    "date": "2026-05-21",
+    "verdict": "blocked_push_unverified",
+    "action": "complete_validator",
+    "source_path": "hunts/schemer/clue-1/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["push_unverified"]
+  },
+  {
+    "run_id": "w21-0011-4000-8000-aabbccddee11",
+    "date": "2026-05-21",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/proxy/clue-3/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/ddd0011"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0012-4000-8000-aabbccddee12",
+    "date": "2026-05-22",
+    "verdict": "applied",
+    "action": "ops_board_complete",
+    "source_path": "hunts/council/clue-5/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/eee0012"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0013-4000-8000-aabbccddee13",
+    "date": "2026-05-22",
+    "verdict": "blocked_schema",
+    "action": "complete_validator",
+    "source_path": "hunts/cost-telemetry/clue-2/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["missing_field_pushed"]
+  },
+  {
+    "run_id": "w21-0014-4000-8000-aabbccddee14",
+    "date": "2026-05-22",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/locke-harvest/clue-3/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/eee0014"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0015-4000-8000-aabbccddee15",
+    "date": "2026-05-22",
+    "verdict": "blocked_verifier",
+    "action": "complete_validator",
+    "source_path": "hunts/ai-gateway/clue-4/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["evidence_url_404"]
+  },
+  {
+    "run_id": "w21-0016-4000-8000-aabbccddee16",
+    "date": "2026-05-22",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/brain-graph/clue-1/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/eee0016"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0017-4000-8000-aabbccddee17",
+    "date": "2026-05-22",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/mcp-server/clue-2/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/eee0017"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0018-4000-8000-aabbccddee18",
+    "date": "2026-05-23",
+    "verdict": "blocked_dry_run",
+    "action": "complete_validator",
+    "source_path": "hunts/the-tightening/clue-1/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["dry_run_blocked"]
+  },
+  {
+    "run_id": "w21-0019-4000-8000-aabbccddee19",
+    "date": "2026-05-23",
+    "verdict": "applied",
+    "action": "complete_validator",
+    "source_path": "hunts/builder/clue-5/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/fff0019"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0020-4000-8000-aabbccddee20",
+    "date": "2026-05-23",
+    "verdict": "paper_design_bypass",
+    "action": "ops_board_complete",
+    "source_path": "hunts/reviewer/clue-1/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["paper_design"]
+  },
+  {
+    "run_id": "w21-0021-4000-8000-aabbccddee21",
+    "date": "2026-05-24",
+    "verdict": "applied",
+    "action": "ops_board_complete",
+    "source_path": "hunts/reflection-worker/clue-2/COMPLETE.md",
+    "evidence_urls": ["https://github.com/AetherCreator/SuperClaude/commit/000aaa1"],
+    "flags": []
+  },
+  {
+    "run_id": "w21-0022-4000-8000-aabbccddee22",
+    "date": "2026-05-24",
+    "verdict": "blocked_schema",
+    "action": "complete_validator",
+    "source_path": "hunts/reflection-worker/clue-2/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["missing_field_run_id"]
+  },
+  {
+    "run_id": "w21-0023-4000-8000-aabbccddee23",
+    "date": "2026-05-24",
+    "verdict": "manual",
+    "action": "ops_board_complete",
+    "source_path": "brain/OPS-BOARD.md",
+    "evidence_urls": [],
+    "flags": ["manual_override"]
+  },
+  {
+    "run_id": "w21-0024-4000-8000-aabbccddee24",
+    "date": "2026-05-24",
+    "verdict": "blocked_push_unverified",
+    "action": "ops_board_complete",
+    "source_path": "brain/OPS-BOARD.md",
+    "evidence_urls": [],
+    "flags": ["push_unverified"]
+  },
+  {
+    "run_id": "w21-0025-4000-8000-aabbccddee25",
+    "date": "2026-05-24",
+    "verdict": "blocked_dry_run",
+    "action": "complete_validator",
+    "source_path": "hunts/scout/clue-2/COMPLETE.md",
+    "evidence_urls": [],
+    "flags": ["dry_run_blocked"]
+  }
+]
