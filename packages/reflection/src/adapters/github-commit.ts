@@ -13,6 +13,11 @@ export async function commitReflectionDigest(
     Accept: "application/vnd.github+json",
   };
 
+  // Ensure branch exists (creates from main HEAD if not found — needed for smoke branches)
+  if (branch !== "main") {
+    await ensureBranchExists(github.owner, github.repo, branch, headers);
+  }
+
   // GET existing file SHA (if exists) for update path
   let existingSha: string | undefined;
   const getResp = await fetch(
@@ -51,4 +56,43 @@ export async function commitReflectionDigest(
     sha: result.commit.sha,
     url: result.commit.html_url,
   };
+}
+
+async function ensureBranchExists(
+  owner: string,
+  repo: string,
+  branch: string,
+  headers: Record<string, string>
+): Promise<void> {
+  // Check if branch exists
+  const branchResp = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`,
+    { headers }
+  );
+  if (branchResp.ok) return; // already exists
+
+  // Get main HEAD SHA
+  const mainResp = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/ref/heads/main`,
+    { headers }
+  );
+  if (!mainResp.ok) {
+    throw new Error(`could not resolve main HEAD for branch creation: ${mainResp.status}`);
+  }
+  const mainData = (await mainResp.json()) as { object: { sha: string } };
+  const mainSha = mainData.object.sha;
+
+  // Create branch ref
+  const createResp = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/refs`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: mainSha }),
+    }
+  );
+  if (!createResp.ok) {
+    const errText = await createResp.text();
+    throw new Error(`branch creation failed ${createResp.status}: ${errText.slice(0, 200)}`);
+  }
 }

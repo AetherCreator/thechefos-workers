@@ -37,35 +37,21 @@ describe("runReflectionFlow — full flow with mocks", () => {
   it("compute → write → commit → file → notify: returns valid FlowResult, all flags set", async () => {
     const mockOpsBoard = "# OPS-BOARD\n\n## BACKLOG\n| ID | Cat | Title | Notes |\n|---|---|---|---|\n";
 
-    // Sequence of fetch calls:
-    // 1. readAutoActionsForWeek → GET brain/auto-actions/... (404 = stub returns nothing)
-    // 2. computeOpsBoardChurn → GET brain/OPS-BOARD.md commits (404)
-    // 3. fetchCostTrajectory → GET cost telemetry (404)
-    // 4. commitReflectionDigest step1 → GET existing file (404 = first write)
-    // 5. commitReflectionDigest step2 → PUT new file
-    // 6. fileOpsRowViaGitHub step1 → GET OPS-BOARD.md
-    // 7. fileOpsRowViaGitHub step2 → PUT OPS-BOARD.md (if any rows to file)
-    // 8. sendReflectionTelegram → POST Telegram
+    // URL-based routing to avoid position-dependency issues
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string, opts?: RequestInit) => {
+      const u = typeof url === "string" ? url : "";
+      const method = opts?.method ?? "GET";
 
-    let fetchCallCount = 0;
-    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
-      fetchCallCount++;
-
-      // Commit: GET existing file → 404 (first write)
-      if (typeof url === "string" && url.includes("contents/brain/06-meta/reflection") && fetchCallCount <= 6) {
-        return { ok: false, status: 404 } as unknown as Response;
-      }
-      // Commit: PUT file → success
-      if (typeof url === "string" && url.includes("contents/brain/06-meta/reflection")) {
+      // Telegram POST
+      if (u.includes("api.telegram.org")) {
         return {
           ok: true,
-          json: async () => ({
-            commit: { sha: "commit-sha-abc", html_url: "https://github.com/AetherCreator/SuperClaude/commit/commit-sha-abc" },
-          }),
+          json: async () => ({ ok: true, result: { message_id: 99 } }),
         } as unknown as Response;
       }
-      // OPS-BOARD: GET → return mock board
-      if (typeof url === "string" && url.includes("contents/brain/OPS-BOARD.md")) {
+
+      // OPS-BOARD: GET → return mock content
+      if (u.includes("contents/brain/OPS-BOARD.md") && method === "GET") {
         return {
           ok: true,
           json: async () => ({
@@ -74,22 +60,61 @@ describe("runReflectionFlow — full flow with mocks", () => {
           }),
         } as unknown as Response;
       }
+
       // OPS-BOARD: PUT → success
-      if (typeof url === "string" && url.includes("repos/AetherCreator/SuperClaude/contents/brain/OPS-BOARD.md")) {
+      if (u.includes("contents/brain/OPS-BOARD.md") && method === "PUT") {
         return {
           ok: true,
           json: async () => ({ content: { sha: "new-ops-sha-456" } }),
         } as unknown as Response;
       }
-      // Telegram
-      if (typeof url === "string" && url.includes("api.telegram.org")) {
+
+      // Branch existence check: GET branches/... → 404 (branch does not exist)
+      if (u.includes("/branches/") && method === "GET") {
+        return { ok: false, status: 404 } as unknown as Response;
+      }
+
+      // Main HEAD ref: GET git/ref/heads/main → return sha
+      if (u.includes("/git/ref/heads/main") && method === "GET") {
         return {
           ok: true,
-          json: async () => ({ ok: true, result: { message_id: 99 } }),
+          json: async () => ({ object: { sha: "main-sha-xyz" } }),
         } as unknown as Response;
       }
+
+      // Branch creation: POST git/refs → success
+      if (u.includes("/git/refs") && method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({ ref: "refs/heads/_smoke/reflection-c3-20260524" }),
+        } as unknown as Response;
+      }
+
+      // Commit: GET existing file on branch → 404 (first write)
+      if (u.includes("contents/brain/06-meta/reflection") && method === "GET") {
+        return { ok: false, status: 404 } as unknown as Response;
+      }
+
+      // Commit: PUT file → success
+      if (u.includes("contents/brain/06-meta/reflection") && method === "PUT") {
+        return {
+          ok: true,
+          json: async () => ({
+            commit: {
+              sha: "commit-sha-abc",
+              html_url: "https://github.com/AetherCreator/SuperClaude/commit/commit-sha-abc",
+            },
+          }),
+        } as unknown as Response;
+      }
+
       // Default: 404 for all other fetches (adapters that need GitHub data)
-      return { ok: false, status: 404, statusText: "Not Found", json: async () => ({}) } as unknown as Response;
+      return {
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        json: async () => ({}),
+      } as unknown as Response;
     }));
 
     const params: FlowParams = {
