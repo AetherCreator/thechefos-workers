@@ -40,7 +40,7 @@ function escHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-async function fetchGithubRaw(env: Env, path: string): Promise<string> {
+export async function fetchGithubRaw(env: Env, path: string): Promise<string> {
   const url = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO_SUPERCLAUDE}/contents/${path}`;
   const res = await fetch(url, {
     headers: {
@@ -53,7 +53,7 @@ async function fetchGithubRaw(env: Env, path: string): Promise<string> {
   return res.text();
 }
 
-async function fetchCostLedger(env: Env): Promise<string> {
+export async function fetchCostLedger(env: Env): Promise<string> {
   try {
     const weekAgo = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
     const { results } = await env.DB.prepare(
@@ -67,7 +67,7 @@ async function fetchCostLedger(env: Env): Promise<string> {
   }
 }
 
-function parseActiveBlock(md: string): string {
+export function parseActiveBlock(md: string): string {
   const lines = md.split("\n");
   const out: string[] = [];
   for (const line of lines) {
@@ -77,7 +77,7 @@ function parseActiveBlock(md: string): string {
   return out.join("\n").trim();
 }
 
-function parseOpsBoard(md: string): { open: string[]; victories: string[] } {
+export function parseOpsBoard(md: string): { open: string[]; victories: string[] } {
   const lines = md.split("\n");
   const open: string[] = [];
   const victories: string[] = [];
