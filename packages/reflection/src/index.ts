@@ -1,12 +1,8 @@
 import { Hono } from "hono";
 import { requireReflectionKey } from "./auth";
 import { handleCronTrigger } from "./cron";
-import { buildEmptyDigest } from "./digest/empty";
-import { computeReflection } from "./engine/index";
-import { queryCarpenterRunsForWeek, queryHunterBaselineForWeek } from "./adapters/d1-queries";
-import { readAutoActionsForWeek } from "./adapters/auto-actions";
-import { readOpsBoardDeltasForWeek } from "./adapters/ops-board-diff";
-import type { Env, InputVolumes, ReflectNowResponse, GithubContext } from "./types";
+import { runReflectionFlow } from "./flow";
+import type { Env } from "./types";
 
 const WEEK_RE = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 
@@ -38,58 +34,27 @@ app.post("/api/reflect-now", async (c) => {
   }
 
   const week = weekParam ?? getCurrentISOWeek();
-  const generatedAt = new Date().toISOString();
-  const workerVersion = c.env.WORKER_VERSION ?? "0.1.0";
+  const commit = url.searchParams.get("commit") === "true";
+  const notify = url.searchParams.get("notify") === "true";
+  const smoke = url.searchParams.get("smoke") === "true";
 
-  const github: GithubContext = {
-    owner: c.env.GITHUB_OWNER,
-    repo: c.env.GITHUB_REPO,
-    pat: c.env.GITHUB_REFLECTION_PAT,
-  };
+  const result = await runReflectionFlow({ week, commit, notify, smoke, env: c.env });
 
-  const [carpenterRuns, hunterBaseline, autoActions, opsDeltas] = await Promise.allSettled([
-    queryCarpenterRunsForWeek(c.env.BRAIN_D1, week),
-    queryHunterBaselineForWeek(c.env.BRAIN_D1, week),
-    readAutoActionsForWeek(github, week),
-    readOpsBoardDeltasForWeek(github, week),
-  ]);
-
-  const inputVolumes: InputVolumes = {
-    auto_actions_files:
-      autoActions.status === "fulfilled" ? autoActions.value.length : 0,
-    ops_board_commits:
-      opsDeltas.status === "fulfilled" ? opsDeltas.value.length : 0,
-    carpenter_runs:
-      carpenterRuns.status === "fulfilled" ? carpenterRuns.value.length : 0,
-    hunter_baseline_runs:
-      hunterBaseline.status === "fulfilled" ? hunterBaseline.value.length : 0,
-  };
-
-  const metrics = await computeReflection(week, {
-    BRAIN_D1: c.env.BRAIN_D1,
-    GITHUB_REFLECTION_PAT: c.env.GITHUB_REFLECTION_PAT,
-    GITHUB_OWNER: c.env.GITHUB_OWNER,
-    GITHUB_REPO: c.env.GITHUB_REPO,
-    COST_TELEMETRY_URL: undefined,
-  });
-
-  const digestMarkdown = buildEmptyDigest(week, generatedAt, workerVersion, inputVolumes, metrics);
-
-  const body: ReflectNowResponse = {
+  return c.json({
     ok: true,
-    week,
-    generated_at: generatedAt,
-    worker_version: workerVersion,
-    input_volumes: inputVolumes,
-    digest_markdown: digestMarkdown,
-    committed: false,
-    commit_reason: "dry-run: commit=false",
-    notified: false,
-    notify_reason: "dry-run: notify=false",
-    filed_ops_rows: [],
-  };
-
-  return c.json(body, 200);
+    week: result.week,
+    generated_at: result.generated_at,
+    worker_version: c.env.WORKER_VERSION ?? "0.1.0",
+    input_volumes: result.input_volumes,
+    digest_markdown: result.digest_markdown,
+    committed: result.committed,
+    commit_url: result.commit_url,
+    commit_sha: result.commit_sha,
+    filed_ops_rows: result.filed_ops_rows,
+    notified: result.notified,
+    notify_message_id: result.notify_message_id,
+    warnings: result.warnings,
+  }, 200);
 });
 
 app.all("*", (c) => c.json({ ok: false, error: "not_found" }, 404));
