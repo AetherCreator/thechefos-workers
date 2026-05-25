@@ -476,6 +476,95 @@ app.post('/api/ops/file', async (c) => {
   return handleOpsFile(c.env, c.req.raw)
 })
 
+// POST /api/auto-actions/write — append audit JSON for autonomous-actor state mutations.
+// Auth: x-brain-write-secret header against BRAIN_WRITE_API_SECRET.
+// Used by voyage, locke-changelog-watcher, reflection, and any in-network actor.
+// Writes to brain/06-meta/auto-actions/<YYYY-MM-DD>/<audit_id>.json on SuperClaude main.
+// Body: { action: string, target: string, payload: object, ts: string }
+// Returns: { ok: true, audit_id, sha } on 200; { error } on 4xx/5xx.
+app.post('/api/auto-actions/write', async (c) => {
+  const provided = c.req.header('x-brain-write-secret')
+  const expected = c.env.BRAIN_WRITE_API_SECRET
+  if (!expected || !provided || provided !== expected) {
+    return c.json({ error: 'Unauthorized — invalid or missing x-brain-write-secret' }, 401)
+  }
+
+  let body: { action?: string; target?: string; payload?: unknown; ts?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'bad_json' }, 400)
+  }
+
+  if (!body.action || !body.target || !body.ts || typeof body.payload !== 'object') {
+    return c.json({ error: 'invalid_body', required: ['action', 'target', 'payload', 'ts'] }, 400)
+  }
+
+  // Date from ts (UTC). Audit_id slug: action prefix + compact ISO + target slug.
+  const ts = body.ts
+  const date = ts.slice(0, 10) // YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return c.json({ error: 'invalid_ts_format', expected: 'ISO 8601' }, 400)
+  }
+  const compact = ts.replace(/[-:]/g, '').replace(/\.\d+/, '').slice(0, 15) + 'Z'
+  const targetSlug = body.target.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 60)
+  // Action prefix from first segment, e.g. 'voyage_state_advance' -> 'voy'
+  const actionPrefix = body.action.startsWith('voyage') ? 'voy' :
+                       body.action.startsWith('reflection') ? 'rfl' :
+                       body.action.startsWith('changelog') ? 'lcw' :
+                       'aux'
+  const audit_id = `${actionPrefix}-${compact}-${targetSlug}`
+  const path = `brain/06-meta/auto-actions/${date}/${audit_id}.json`
+
+  const auditDoc = {
+    audit_id,
+    action: body.action,
+    target: body.target,
+    payload: body.payload,
+    ts: body.ts,
+    written_at: new Date().toISOString(),
+    source: 'brain-write/api/auto-actions/write',
+  }
+
+  const headers = githubHeaders(c.env.GITHUB_TOKEN)
+  const contentBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(auditDoc, null, 2))))
+
+  try {
+    const existing = await getFileContent(path, headers)
+    const putRes = await fetch(
+      `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`,
+      {
+        method: 'PUT',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `auto-action: ${body.action} ${body.target} (${audit_id})`,
+          content: contentBase64,
+          ...(existing ? { sha: existing.sha } : {}),
+          committer: COMMITTER,
+        }),
+      }
+    )
+    if (!putRes.ok) {
+      const errText = await putRes.text()
+      return c.json({
+        error: 'github_put_failed',
+        github_status: putRes.status,
+        details: errText.slice(0, 500),
+      }, putRes.status >= 500 ? 502 : (putRes.status as any))
+    }
+    const putData = await putRes.json() as { content?: { sha: string }; commit?: { sha: string } }
+    return c.json({
+      ok: true,
+      audit_id,
+      path,
+      sha: putData.commit?.sha ?? putData.content?.sha ?? 'unknown',
+    })
+  } catch (e) {
+    return c.json({ error: 'internal', message: String(e) }, 500)
+  }
+})
+
+
 // GET /api/ops/list?filter=open|blocked|stale|all
 app.get('/api/ops/list', async (c) => {
   const filter = (c.req.query('filter') ?? 'open') as 'open' | 'blocked' | 'stale' | 'all'
