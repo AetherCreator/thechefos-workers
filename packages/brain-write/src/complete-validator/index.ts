@@ -4,6 +4,7 @@
 //     (placeholder rejection, BLOCKED-flags semantics).
 // C2: V2 status-evidence + V3 push verification + D1 cross-source SHA (this clue).
 // C3: webhook integration + COMPLETE_VALIDATOR_DRY_RUN gate + audit trail.
+// C2 Guard Layer hook: fireXpGrantHook added after evidence check (soft-degrade, never blocks verdict)
 
 import { parse as parseYaml } from 'yaml'
 import type { ZodIssue } from 'zod'
@@ -11,6 +12,7 @@ import { CompleteSchema } from './schema'
 import { parseVerifyLog } from './verify-log'
 import { inferAgent } from './agent'
 import { checkEvidence } from './evidence'
+import { fireXpGrantHook } from './xp-grant-hook'
 import type { BlockedCode, ValidatorEnv, ValidatorVerdict } from './types'
 
 /**
@@ -138,6 +140,10 @@ export async function validateComplete(
       diagnosis: evidence.diagnosis,
     }
   }
+
+  // C2 Guard Layer hook — AFTER evidence/audit, BEFORE response return
+  // Soft-degrade: any failure is logged but NEVER blocks the 'applied' verdict
+  await fireXpGrantHook(env as any, parsed, agent)
 
   return { verdict: 'applied', parsed, agent }
 }
