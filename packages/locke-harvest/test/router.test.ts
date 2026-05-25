@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import worker from '../src/index'
 
 const mockEnv = {
@@ -26,6 +26,9 @@ const mockCtx = {
 } as unknown as ExecutionContext
 
 describe('router', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
   it('GET /health returns 200 with both personas listed', async () => {
     const req = new Request('https://locke-harvest.workers.dev/health')
     const res = await worker.fetch(req, mockEnv as any, mockCtx)
@@ -45,14 +48,30 @@ describe('router', () => {
     expect(location).toContain('/run/lookout')
   })
 
-  it('POST /run/changelog with valid secret returns 200 stub response', async () => {
+  it('POST /run/changelog with valid secret returns 200 run response', async () => {
+    const emptyFeed = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Test</title></feed>`
+    const depsYaml = 'version: 1\ndependencies:\n  - name: test-dep\n    feed: https://example.com/feed.atom\n    criticality: high\n    notes: test\n'
+    const base64Yaml = Buffer.from(depsYaml, 'utf-8').toString('base64')
+    const mockKV = { get: vi.fn().mockResolvedValue(null), put: vi.fn().mockResolvedValue(undefined) }
+    const envWithExtras = {
+      ...mockEnv,
+      GITHUB_TOKEN: 'test-token',
+      CHANGELOG_SEEN: mockKV,
+    }
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      if (String(url).includes('api.github.com')) {
+        return Promise.resolve({ ok: true, json: async () => ({ content: base64Yaml, encoding: 'base64' }) })
+      }
+      return Promise.resolve({ ok: true, text: async () => emptyFeed })
+    }))
     const req = new Request('https://locke-harvest.workers.dev/run/changelog?secret=test-secret', { method: 'POST' })
-    const res = await worker.fetch(req, mockEnv as any, mockCtx)
+    const res = await worker.fetch(req, envWithExtras as any, mockCtx)
     expect(res.status).toBe(200)
     const body = await res.json() as any
     expect(body.ok).toBe(true)
-    expect(body.stub).toBe(true)
     expect(body.persona).toBe('changelog-watcher')
+    expect(typeof body.deps_polled).toBe('number')
+    expect(Array.isArray(body.leads)).toBe(true)
   })
 
   it('POST /run/changelog with wrong secret returns 403', async () => {

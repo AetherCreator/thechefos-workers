@@ -6,7 +6,7 @@ const VALID_LEAD = {
   dep_name: 'cloudflare-workers-sdk',
   release_tag: 'wrangler@4.94.0',
   release_url: 'https://github.com/cloudflare/workers-sdk/releases/tag/wrangler%404.94.0',
-  severity: 'patch' as const,
+  severity: 'minor' as const,
   criticality: 'high' as const,
   severity_signals: ['Patch Changes: dependency updates'],
   title: 'wrangler@4.94.0 released',
@@ -20,7 +20,7 @@ describe('validateChangelogLead', () => {
   });
 
   it('accepts all valid severity enum values', () => {
-    for (const severity of ['security_advisory', 'breaking_change', 'feature', 'patch']) {
+    for (const severity of ['security_advisory', 'breaking_change', 'deprecation', 'minor']) {
       expect(() => validateChangelogLead({ ...VALID_LEAD, severity })).not.toThrow();
     }
   });

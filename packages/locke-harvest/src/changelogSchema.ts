@@ -1,4 +1,4 @@
-export type SeverityLevel = 'security_advisory' | 'breaking_change' | 'feature' | 'patch';
+export type SeverityLevel = 'security_advisory' | 'breaking_change' | 'deprecation' | 'minor';
 export type CriticalityLevel = 'high' | 'medium' | 'low';
 
 export interface ChangelogLead {
@@ -17,8 +17,8 @@ export interface ChangelogLead {
 const SEVERITY_VALUES: ReadonlySet<string> = new Set([
   'security_advisory',
   'breaking_change',
-  'feature',
-  'patch'
+  'deprecation',
+  'minor'
 ]);
 
 const CRITICALITY_VALUES: ReadonlySet<string> = new Set(['high', 'medium', 'low']);
