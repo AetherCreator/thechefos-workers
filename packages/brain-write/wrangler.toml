@@ -17,3 +17,13 @@ id = "fee11c9392d141d49eb8efa7d495d7be"
 # Guard Layer secrets (set with `wrangler secret put <NAME>`):
 #   TYLER_CHAT_ID            — defaults to 6091970994 in notifier if unset
 #   SHIPS_DOCTOR_BOT_TOKEN   — Crazy I. Joe bot (Crew Bible §4); falls back to MASTRO_BOT_TOKEN
+
+# P5 Pa: KV IDs are placeholders; C4 mints real namespaces and patches them in.
+# DO NOT deploy with these placeholder values — wrangler dry-run is the safe check.
+[[kv_namespaces]]
+binding = "CREW_XP_KV"
+id = "PLACEHOLDER_CREW_XP_KV_ID"
+
+[[kv_namespaces]]
+binding = "CREW_XP_DEDUP_KV"
+id = "PLACEHOLDER_CREW_XP_DEDUP_KV_ID"
