@@ -16,7 +16,7 @@ export type BlockedCode =
   | 'blocked_d1_sha_mismatch'
   | 'blocked_rate_limit'
 
-export type Agent = 'carpenter' | 'hunter' | 'unknown'
+export type Agent = 'carpenter' | 'hunter' | 'claude-code' | 'chat-opus' | 'conductor' | 'unknown'
 
 export type ValidatorVerdict =
   | { verdict: 'applied'; parsed: CompleteSchemaType; agent: Agent }

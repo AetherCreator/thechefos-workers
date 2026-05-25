@@ -76,3 +76,44 @@ describe('complete-validator C1 — parse layer (post-C2 pipeline integration)',
     expect(r.verdict).toBe('blocked_blocked_empty_flags')
   })
 })
+
+describe('H3 pre-flip fix (2026-05-24) — frontmatter + natural-language verify_log', () => {
+  it('valid-frontmatter-wrapped.md → applied (frontmatter `---` extracted, body ignored)', async () => {
+    const r = await validateComplete(load('valid-frontmatter-wrapped.md'), env)
+    expect(r.verdict).toBe('applied')
+    if (r.verdict === 'applied') {
+      expect(r.parsed.hunt).toBe('gamma-v1')
+      expect(r.parsed.clue).toBe(2)
+      expect(r.parsed.verify_log).toHaveLength(3)
+    }
+  })
+
+  it('valid-natural-verify-log.md → applied (em-dash + "ok" entries accepted as natural language)', async () => {
+    const r = await validateComplete(load('valid-natural-verify-log.md'), env)
+    expect(r.verdict).toBe('applied')
+    if (r.verdict === 'applied') {
+      // 4 entries provided; canonical regex matches 2 of them ("...: 200 ..." and one machine-readable id line)
+      // Natural-language entries (em-dash separator) are accepted without failing the validator.
+      expect(r.parsed.verify_log).toHaveLength(4)
+    }
+  })
+
+  it('blocked-blank-verify-entry.md → blocked_verify_log_malformed (blank string trips the floor)', async () => {
+    const r = await validateComplete(load('blocked-blank-verify-entry.md'), env)
+    expect(r.verdict).toBe('blocked_verify_log_malformed')
+    if (r.verdict === 'blocked_verify_log_malformed') {
+      const idx = r.diagnosis.malformed_indices as number[]
+      // Entry at index 2 is the empty string — that's the blocking one.
+      // (Indices 0, 1 ("ok", "abc") are also < 5 chars, so all three short ones block.)
+      expect(idx).toContain(2)
+      expect(idx.length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('extractFrontmatter is forgiving: raw-YAML fixture (no `---`) still parses identically', async () => {
+    // valid-hunter.md is raw YAML with no frontmatter delimiters — must keep working.
+    const r = await validateComplete(load('valid-hunter.md'), env)
+    expect(r.verdict).toBe('applied')
+  })
+})
+

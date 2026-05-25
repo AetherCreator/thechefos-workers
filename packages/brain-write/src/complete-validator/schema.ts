@@ -54,7 +54,7 @@ export const CompleteSchema = z
     evidence_urls: z.array(NotPlaceholder),
     flags: z.array(z.string()),
     notes: z.string(),
-    agent: z.enum(['carpenter', 'hunter', 'unknown']).optional(),
+    agent: z.enum(['carpenter', 'hunter', 'claude-code', 'chat-opus', 'conductor', 'unknown']).optional(),
     run_id: z.string().optional(),
   })
   .strict() // V5: zod rejects unknown keys (fictional-field detection)

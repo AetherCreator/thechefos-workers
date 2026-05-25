@@ -44,14 +44,39 @@ function classifyZodIssues(issues: readonly ZodIssue[]): BlockedCode {
   return 'blocked_schema'
 }
 
+/**
+ * H3 pre-flip fix (2026-05-24): Accept COMPLETE.md input as either:
+ *   (a) raw YAML (fixture-shaped, machine-emitted, no `---` delimiters)
+ *   (b) markdown frontmatter shape `---\n<YAML>\n---\n<body>` (human-authored)
+ *
+ * Pre-fix the validator used `parseYaml()` single-doc mode on (b), which dies
+ * with "Source contains multiple documents" because the trailing `---` reads
+ * as a YAML document separator. All 4 P4 quest-log COMPLETE.mds blocked_schema
+ * on this false-negative class.
+ *
+ * Extraction is forgiving: if input doesn't open with `---\n`, returns input
+ * unchanged so raw-YAML fixtures keep working. If `---` opens but no closing
+ * `---` found, also returns input unchanged (single-doc YAML with a stray
+ * leading separator is the YAML parser's problem, not ours to second-guess).
+ */
+function extractFrontmatter(input: string): string {
+  // Match leading `---` + newline (LF or CRLF), then capture until the next
+  // line that is just `---` (with optional trailing newline). The capture group
+  // is the YAML content; everything after the closing `---` is markdown body.
+  const m = input.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
+  if (m) return m[1]
+  return input
+}
+
 export async function validateComplete(
   yamlText: string,
   env: ValidatorEnv,
 ): Promise<ValidatorVerdict> {
-  // 1. YAML parse
+  // 1. YAML parse — extract frontmatter first for human-authored COMPLETE.mds
   let raw: unknown
+  const yamlOnly = extractFrontmatter(yamlText)
   try {
-    raw = parseYaml(yamlText)
+    raw = parseYaml(yamlOnly)
   } catch (e) {
     return {
       verdict: 'blocked_schema',
