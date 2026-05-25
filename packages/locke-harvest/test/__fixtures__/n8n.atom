@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/n8n-io/n8n/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/n8n-io/n8n/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/n8n-io/n8n/releases.atom"/>
+  <title>Release notes from n8n</title>
+  <updated>2026-05-22T09:36:38Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/n8n@2.22.2</id>
+    <updated>2026-05-22T10:03:42Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/n8n%402.22.2"/>
+    <title>n8n@2.22.2</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.22.1...n8n@2.22.2&quot;&gt;2.22.2&lt;/a&gt; (2026-05-22)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Acquire expression isolate for scheduled polls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30741&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30741/hovercard&quot;&gt;#30741&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/27ae0d7eb83b8e46935569e8694c536a03aeb4e6&quot;&gt;27ae0d7&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Report scheduled-poll isolate acquisition failures via __emitError (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30791&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30791/hovercard&quot;&gt;#30791&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/61597f03addb4d613e9016a8b08ee24bce09c1c9&quot;&gt;61597f0&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Fixes PostHog group identify call site after init (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30800&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30800/hovercard&quot;&gt;#30800&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/c9b1220726bf5857b91bdfd29dc3001866716647&quot;&gt;c9b1220&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/beta</id>
+    <updated>2026-05-22T10:02:41Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/beta"/>
+    <title>beta</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.22.1...n8n@2.22.2&quot;&gt;2.22.2&lt;/a&gt; (2026-05-22)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Acquire expression isolate for scheduled polls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30741&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30741/hovercard&quot;&gt;#30741&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/27ae0d7eb83b8e46935569e8694c536a03aeb4e6&quot;&gt;27ae0d7&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Report scheduled-poll isolate acquisition failures via __emitError (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30791&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30791/hovercard&quot;&gt;#30791&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/61597f03addb4d613e9016a8b08ee24bce09c1c9&quot;&gt;61597f0&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Fixes PostHog group identify call site after init (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30800&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30800/hovercard&quot;&gt;#30800&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/c9b1220726bf5857b91bdfd29dc3001866716647&quot;&gt;c9b1220&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/v1</id>
+    <updated>2026-05-21T09:25:48Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/v1"/>
+    <title>v1: :rocket: Release 1.123.46 (#30878)</title>
+    <content type="html">&lt;p&gt;Co-authored-by: Matsuuu &lt;a href=&quot;mailto:16068444+Matsuuu@users.noreply.github.com&quot;&gt;16068444+Matsuuu@users.noreply.github.com&lt;/a&gt;&lt;/p&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/stable</id>
+    <updated>2026-05-21T14:14:18Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/stable"/>
+    <title>stable</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.21.5...n8n@2.21.7&quot;&gt;2.21.7&lt;/a&gt; (2026-05-21)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Acquire expression isolate for scheduled polls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30742&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30742/hovercard&quot;&gt;#30742&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/6167d4a3623d1a7ac73922737b71fb840b69ac9f&quot;&gt;6167d4a&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Populate manual user id on webhook execution data path (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30781&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30781/hovercard&quot;&gt;#30781&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/50c55aa94b7d8605854d323ae527b7dc354b2448&quot;&gt;50c55aa&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Report scheduled-poll isolate acquisition failures via __emitError (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30792&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30792/hovercard&quot;&gt;#30792&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/6321390a361d53c2322f047a943153e45c5846a0&quot;&gt;6321390&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Validate non-empty prompts in AI vendor nodes before API calls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30820&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30820/hovercard&quot;&gt;#30820&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/15d0dbbcaf5899f33b1e3c49005a37e7ef565aae&quot;&gt;15d0dbb&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/n8n@2.22.1</id>
+    <updated>2026-05-21T10:23:01Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/n8n%402.22.1"/>
+    <title>n8n@2.22.1</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.22.0...n8n@2.22.1&quot;&gt;2.22.1&lt;/a&gt; (2026-05-21)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Populate manual user id on webhook execution data path (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30780&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30780/hovercard&quot;&gt;#30780&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/c6d3a888cd4188d80bfed446958bf535bd52d696&quot;&gt;c6d3a88&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Validate non-empty prompts in AI vendor nodes before API calls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30819&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30819/hovercard&quot;&gt;#30819&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/d419e495126acc84c950d819eacab7885af368f4&quot;&gt;d419e49&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/n8n@2.21.7</id>
+    <updated>2026-05-21T14:15:10Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/n8n%402.21.7"/>
+    <title>n8n@2.21.7</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.21.5...n8n@2.21.7&quot;&gt;2.21.7&lt;/a&gt; (2026-05-21)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Acquire expression isolate for scheduled polls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30742&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30742/hovercard&quot;&gt;#30742&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/6167d4a3623d1a7ac73922737b71fb840b69ac9f&quot;&gt;6167d4a&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Populate manual user id on webhook execution data path (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30781&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30781/hovercard&quot;&gt;#30781&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/50c55aa94b7d8605854d323ae527b7dc354b2448&quot;&gt;50c55aa&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Report scheduled-poll isolate acquisition failures via __emitError (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30792&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30792/hovercard&quot;&gt;#30792&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/6321390a361d53c2322f047a943153e45c5846a0&quot;&gt;6321390&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Validate non-empty prompts in AI vendor nodes before API calls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30820&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30820/hovercard&quot;&gt;#30820&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/15d0dbbcaf5899f33b1e3c49005a37e7ef565aae&quot;&gt;15d0dbb&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/n8n@2.21.6</id>
+    <updated>2026-05-21T10:24:06Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/n8n%402.21.6"/>
+    <title>n8n@2.21.6</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.21.5...n8n@2.21.6&quot;&gt;2.21.6&lt;/a&gt; (2026-05-21)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Acquire expression isolate for scheduled polls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30742&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30742/hovercard&quot;&gt;#30742&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/6167d4a3623d1a7ac73922737b71fb840b69ac9f&quot;&gt;6167d4a&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Populate manual user id on webhook execution data path (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30781&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30781/hovercard&quot;&gt;#30781&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/50c55aa94b7d8605854d323ae527b7dc354b2448&quot;&gt;50c55aa&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Validate non-empty prompts in AI vendor nodes before API calls (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30820&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30820/hovercard&quot;&gt;#30820&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/15d0dbbcaf5899f33b1e3c49005a37e7ef565aae&quot;&gt;15d0dbb&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/n8n@2.21.6-exp.0</id>
+    <updated>2026-05-21T11:45:09Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/n8n%402.21.6-exp.0"/>
+    <title>n8n@2.21.6-exp.0</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.21.6...n8n@2.21.6-exp.0&quot;&gt;2.21.6-exp.0&lt;/a&gt; (2026-05-21)&lt;/h2&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/n8n@1.123.46</id>
+    <updated>2026-05-21T09:47:33Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/n8n%401.123.46"/>
+    <title>n8n@1.123.46</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@1.123.45...n8n@1.123.46&quot;&gt;1.123.46&lt;/a&gt; (2026-05-21)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;core:&lt;/strong&gt; Require admin push when migrating legacy environments to projects folder (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30530&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30530/hovercard&quot;&gt;#30530&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/96a0380a6d3ff6cdfa1770bf90a5fa4cfd84ae8f&quot;&gt;96a0380&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/193215554/n8n@2.21.5</id>
+    <updated>2026-05-20T09:55:40Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/n8n-io/n8n/releases/tag/n8n%402.21.5"/>
+    <title>n8n@2.21.5</title>
+    <content type="html">&lt;h2&gt;&lt;a href=&quot;https://github.com/n8n-io/n8n/compare/n8n@2.21.4...n8n@2.21.5&quot;&gt;2.21.5&lt;/a&gt; (2026-05-20)&lt;/h2&gt;
+&lt;h3&gt;Bug Fixes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;editor:&lt;/strong&gt; Stabilize workflow setup credentials state (&lt;a href=&quot;https://github.com/n8n-io/n8n/issues/30731&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/n8n-io/n8n/pull/30731/hovercard&quot;&gt;#30731&lt;/a&gt;) (&lt;a href=&quot;https://github.com/n8n-io/n8n/commit/8c5817385760cff1fd764216d17ba3ed7d90def3&quot;&gt;8c58173&lt;/a&gt;)&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>n8n-assistant[bot]</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/in/177217?s=60&amp;v=4"/>
+  </entry>
+</feed>

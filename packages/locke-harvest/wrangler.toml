@@ -52,3 +52,7 @@ PER_QUERY_SLEEP_MS = "1500"
 
 [ai]
 binding = "AI"
+
+[[kv_namespaces]]
+binding = "CHANGELOG_SEEN"
+id = "PLACEHOLDER_FILLED_IN_C5"

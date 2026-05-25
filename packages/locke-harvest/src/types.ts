@@ -15,4 +15,6 @@ export interface Env {
   BRAIN_WRITE_SECRET: string;
   HARVEST_RUN_SECRET: string;
   BRAVE_SEARCH_API_KEY: string;
+  GITHUB_TOKEN: string;
+  CHANGELOG_SEEN: KVNamespace;
 }

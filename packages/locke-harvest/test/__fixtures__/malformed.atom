@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>tag:example.com,2008:malformed-test</id>
+  <title>Malformed Test Feed</title>
+  <updated>2026-01-15T00:00:00Z</updated>
+
+  <!-- Entry with all valid fields -->
+  <entry>
+    <id>tag:example.com,2008:entry-complete</id>
+    <updated>2026-01-15T00:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://example.com/entry-complete"/>
+    <title>Complete valid entry</title>
+    <summary>This entry has all required fields present and is fully valid.</summary>
+  </entry>
+
+  <!-- Entry with missing <id> — should fall back to link URL -->
+  <entry>
+    <updated>2026-01-14T00:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://example.com/no-id"/>
+    <title>Entry missing id field</title>
+    <summary>This entry has no id element; id should fall back to the link href.</summary>
+  </entry>
+
+  <!-- Entry with missing <updated> — should return empty string -->
+  <entry>
+    <id>tag:example.com,2008:entry-no-updated</id>
+    <link rel="alternate" type="text/html" href="https://example.com/no-updated"/>
+    <title>Entry missing updated field</title>
+    <summary>This entry has no updated element; updated should be empty string.</summary>
+  </entry>
+
+  <!-- Entry with HTML <content> instead of <summary> (GitHub releases.atom style) -->
+  <entry>
+    <id>tag:example.com,2008:entry-html-content</id>
+    <updated>2026-01-13T00:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://example.com/html-content"/>
+    <title>Entry with HTML content tag</title>
+    <content type="html">&lt;h1&gt;Breaking Change&lt;/h1&gt;&lt;p&gt;This is a &lt;strong&gt;breaking&lt;/strong&gt; change with &lt;code&gt;API removal&lt;/code&gt;.&lt;/p&gt;</content>
+  </entry>
+
+  <!-- Entry with very long summary — should be truncated to 800 chars -->
+  <entry>
+    <id>tag:example.com,2008:entry-long-summary</id>
+    <updated>2026-01-12T00:00:00Z</updated>
+    <link rel="alternate" type="text/html" href="https://example.com/long-summary"/>
+    <title>Entry with very long summary</title>
+    <summary>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</summary>
+  </entry>
+
+</feed>

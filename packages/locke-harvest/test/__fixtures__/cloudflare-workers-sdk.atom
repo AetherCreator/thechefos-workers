@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xml:lang="en-US">
+  <id>tag:github.com,2008:https://github.com/cloudflare/workers-sdk/releases</id>
+  <link type="text/html" rel="alternate" href="https://github.com/cloudflare/workers-sdk/releases"/>
+  <link type="application/atom+xml" rel="self" href="https://github.com/cloudflare/workers-sdk/releases.atom"/>
+  <title>Release notes from workers-sdk</title>
+  <updated>2026-05-22T13:22:01Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/wrangler@4.94.0</id>
+    <updated>2026-05-22T13:22:08Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/wrangler%404.94.0"/>
+    <title>wrangler@4.94.0</title>
+    <content type="html">&lt;h3&gt;Minor Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13897&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13897/hovercard&quot;&gt;#13897&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/52e9082e32d7bffaeca92f27ab472b56964ba2bb&quot;&gt;&lt;code&gt;52e9082&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/dario-piotrowicz&quot;&gt;@dario-piotrowicz&lt;/a&gt;! - Add automatic Cloudflare skills installation for AI coding agents&lt;/p&gt;
+&lt;p&gt;Wrangler now detects AI coding agents and offers to install Cloudflare skill files from the &lt;code&gt;cloudflare/skills&lt;/code&gt; GitHub repository. Users are prompted once interactively; subsequent runs skip the prompt. Use &lt;code&gt;--install-skills&lt;/code&gt; to install without prompting.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13989&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13989/hovercard&quot;&gt;#13989&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/f598eac72bcdf838ba890bcbd100e99ee8fac17f&quot;&gt;&lt;code&gt;f598eac&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/MattieTK&quot;&gt;@MattieTK&lt;/a&gt;! - Print a QR code alongside the tunnel URL when sharing via Cloudflare Tunnel&lt;/p&gt;
+&lt;p&gt;When a tunnel is started (via &lt;code&gt;wrangler dev --tunnel&lt;/code&gt; or the Vite plugin with &lt;code&gt;tunnel: true&lt;/code&gt;), a scannable QR code is now printed to the terminal beneath the tunnel URL. This makes it easy to open the tunnel on a mobile device without manually copying the URL.&lt;/p&gt;
+&lt;p&gt;The QR code uses Unicode block characters for a compact representation and is generated best-effort -- if generation fails for any reason, the tunnel URL is still displayed as before.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13467&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13467/hovercard&quot;&gt;#13467&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/3a1fbed5988efe03ae50cc502eff6a4785728396&quot;&gt;&lt;code&gt;3a1fbed&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/deloreyj&quot;&gt;@deloreyj&lt;/a&gt;! - Add &lt;code&gt;schedule&lt;/code&gt; property to Workflow bindings for cron-based triggering&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;Note:&lt;/strong&gt; This is a configuration-only change. Scheduled triggering of Workflow instances is not yet available — adding &lt;code&gt;schedule&lt;/code&gt; to a Workflow binding will not result in scheduled invocations at this time. This change lays the groundwork for an upcoming feature.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Workflow bindings in &lt;code&gt;wrangler.json&lt;/code&gt; now accept an optional &lt;code&gt;schedule&lt;/code&gt; field that configures one or more cron expressions to automatically trigger new workflow instances on a schedule.&lt;/p&gt;
+&lt;div class=&quot;highlight highlight-source-json-comments notranslate position-relative overflow-auto&quot; data-snippet-clipboard-copy-content=&quot;// wrangler.json
+{
+  &amp;quot;workflows&amp;quot;: [
+    {
+      &amp;quot;binding&amp;quot;: &amp;quot;MY_WORKFLOW&amp;quot;,
+      &amp;quot;name&amp;quot;: &amp;quot;my-workflow&amp;quot;,
+      &amp;quot;class_name&amp;quot;: &amp;quot;MyWorkflow&amp;quot;,
+      &amp;quot;schedule&amp;quot;: &amp;quot;0 9 * * 1&amp;quot;
+    }
+  ]
+}&quot;&gt;&lt;pre&gt;&lt;span class=&quot;pl-c&quot;&gt;&lt;span class=&quot;pl-c&quot;&gt;//&lt;/span&gt; wrangler.json&lt;/span&gt;
+{
+  &lt;span class=&quot;pl-ent&quot;&gt;&quot;workflows&quot;&lt;/span&gt;: [
+    {
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;binding&quot;&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;MY_WORKFLOW&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;,
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;name&quot;&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;my-workflow&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;,
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;class_name&quot;&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;MyWorkflow&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;,
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;schedule&quot;&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;0 9 * * 1&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;
+    }
+  ]
+}&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Multiple schedules can be provided as an array:&lt;/p&gt;
+&lt;div class=&quot;highlight highlight-source-json-comments notranslate position-relative overflow-auto&quot; data-snippet-clipboard-copy-content=&quot;{
+  &amp;quot;workflows&amp;quot;: [
+    {
+      &amp;quot;binding&amp;quot;: &amp;quot;MY_WORKFLOW&amp;quot;,
+      &amp;quot;name&amp;quot;: &amp;quot;my-workflow&amp;quot;,
+      &amp;quot;class_name&amp;quot;: &amp;quot;MyWorkflow&amp;quot;,
+      &amp;quot;schedule&amp;quot;: [&amp;quot;0 9 * * 1&amp;quot;, &amp;quot;0 17 * * 5&amp;quot;]
+    }
+  ]
+}&quot;&gt;&lt;pre&gt;{
+  &lt;span class=&quot;pl-ent&quot;&gt;&quot;workflows&quot;&lt;/span&gt;: [
+    {
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;binding&quot;&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;MY_WORKFLOW&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;,
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;name&quot;&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;my-workflow&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;,
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;class_name&quot;&lt;/span&gt;: &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;MyWorkflow&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;,
+      &lt;span class=&quot;pl-ent&quot;&gt;&quot;schedule&quot;&lt;/span&gt;: [&lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;0 9 * * 1&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;, &lt;span class=&quot;pl-s&quot;&gt;&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;0 17 * * 5&lt;span class=&quot;pl-pds&quot;&gt;&quot;&lt;/span&gt;&lt;/span&gt;]
+    }
+  ]
+}&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The schedule is sent to the Workflows control plane on &lt;code&gt;wrangler deploy&lt;/code&gt;. Configuring &lt;code&gt;schedule&lt;/code&gt; on a workflow binding that references an external &lt;code&gt;script_name&lt;/code&gt; is an error — the schedule must be configured on the worker that defines the workflow.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13993&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13993/hovercard&quot;&gt;#13993&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/07336888e0bc82925e4023f5b72a0062f10d77b8&quot;&gt;&lt;code&gt;0733688&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/apps/dependabot&quot;&gt;@dependabot&lt;/a&gt;! - Update dependencies of &quot;miniflare&quot;, &quot;wrangler&quot;&lt;/p&gt;
+&lt;p&gt;The following dependency versions have been updated:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Dependency&lt;/th&gt;
+&lt;th&gt;From&lt;/th&gt;
+&lt;th&gt;To&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;workerd&lt;/td&gt;
+&lt;td&gt;1.20260520.1&lt;/td&gt;
+&lt;td&gt;1.20260521.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/14008&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/14008/hovercard&quot;&gt;#14008&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/fc1f7b977908b78a4379d1d7b261ca7c69022ba3&quot;&gt;&lt;code&gt;fc1f7b9&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Fix Access Service Token authentication for applications that only allow service tokens&lt;/p&gt;
+&lt;p&gt;When using remote bindings against a Worker behind a Cloudflare Access application configured to only allow Service Auth tokens (no interactive user authentication), Wrangler previously ignored the &lt;code&gt;CLOUDFLARE_ACCESS_CLIENT_ID&lt;/code&gt; and &lt;code&gt;CLOUDFLARE_ACCESS_CLIENT_SECRET&lt;/code&gt; environment variables and the request would fail with a 403.&lt;/p&gt;
+&lt;p&gt;This happened because Wrangler detects Access by looking for a 302 redirect to &lt;code&gt;cloudflareaccess.com&lt;/code&gt;. A service-auth-only Access application has no interactive login path, so it responds with a hard 403 instead of redirecting. Wrangler concluded the domain was not behind Access and skipped attaching the service token headers entirely.&lt;/p&gt;
+&lt;p&gt;The env-var check now runs before the Access detection step, so the configured service token credentials are always used when present.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/12277&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/12277/hovercard&quot;&gt;#12277&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/8c569c6232588594e7a48219bbd020955f5fd5a4&quot;&gt;&lt;code&gt;8c569c6&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/penalosa&quot;&gt;@penalosa&lt;/a&gt;! - Include column names in D1 SQL export INSERT statements&lt;/p&gt;
+&lt;p&gt;D1 SQL exports now include column names in INSERT statements (e.g., &lt;code&gt;INSERT INTO &quot;table&quot; (&quot;col1&quot;,&quot;col2&quot;) VALUES(...)&lt;/code&gt;). This ensures that exported SQL can be successfully imported even when the target table has columns in a different order than the original, which commonly occurs during iterative development when schemas evolve.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Updated dependencies [&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/07336888e0bc82925e4023f5b72a0062f10d77b8&quot;&gt;&lt;code&gt;0733688&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/30657e1db097135d97209c3ae0cc623fc66827b9&quot;&gt;&lt;code&gt;30657e1&lt;/code&gt;&lt;/a&gt;]:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;miniflare@4.20260521.0&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/miniflare@4.20260521.0</id>
+    <updated>2026-05-22T13:22:06Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/miniflare%404.20260521.0"/>
+    <title>miniflare@4.20260521.0</title>
+    <content type="html">&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13993&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13993/hovercard&quot;&gt;#13993&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/07336888e0bc82925e4023f5b72a0062f10d77b8&quot;&gt;&lt;code&gt;0733688&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/apps/dependabot&quot;&gt;@dependabot&lt;/a&gt;! - Update dependencies of &quot;miniflare&quot;, &quot;wrangler&quot;&lt;/p&gt;
+&lt;p&gt;The following dependency versions have been updated:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Dependency&lt;/th&gt;
+&lt;th&gt;From&lt;/th&gt;
+&lt;th&gt;To&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;workerd&lt;/td&gt;
+&lt;td&gt;1.20260520.1&lt;/td&gt;
+&lt;td&gt;1.20260521.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13999&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13999/hovercard&quot;&gt;#13999&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/30657e1db097135d97209c3ae0cc623fc66827b9&quot;&gt;&lt;code&gt;30657e1&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/edmundhung&quot;&gt;@edmundhung&lt;/a&gt;! - Fix TCP requests failing when &lt;code&gt;outboundService&lt;/code&gt; is configured&lt;/p&gt;
+&lt;p&gt;Workers using &lt;code&gt;outboundService&lt;/code&gt; can now open TCP connections with &lt;code&gt;cloudflare:sockets&lt;/code&gt;. Previously, TCP requests could throw an error when a custom outbound service was configured.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/@cloudflare/workers-utils@0.21.1</id>
+    <updated>2026-05-22T13:22:11Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fworkers-utils%400.21.1"/>
+    <title>@cloudflare/workers-utils@0.21.1</title>
+    <content type="html">&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13933&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13933/hovercard&quot;&gt;#13933&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/90092c0bca526e2e08a25fe7969534426eb6fd9f&quot;&gt;&lt;code&gt;90092c0&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Mark &lt;code&gt;@cloudflare/workers-utils&lt;/code&gt; as side-effect-free and properly declare &lt;code&gt;undici&lt;/code&gt; as a runtime dependency&lt;/p&gt;
+&lt;p&gt;The package now declares &lt;code&gt;&quot;sideEffects&quot;: false&lt;/code&gt; in its &lt;code&gt;package.json&lt;/code&gt; so that downstream bundlers can tree-shake unused exports. In particular, consumers that only use a subset of the package (for example, &lt;code&gt;getTodaysCompatDate&lt;/code&gt; from the main entry) will no longer carry the &lt;code&gt;cloudflared&lt;/code&gt; / &lt;code&gt;tunnel&lt;/code&gt; exports — or their transitive dependencies — in their final bundle.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;undici&lt;/code&gt; has been moved from &lt;code&gt;devDependencies&lt;/code&gt; to &lt;code&gt;dependencies&lt;/code&gt;. Previously it was incorrectly listed as a devDependency while the bundler config marked it as external, leaving the published &lt;code&gt;dist/index.mjs&lt;/code&gt; with an unresolved &lt;code&gt;import { fetch } from &quot;undici&quot;&lt;/code&gt; for anyone installing the package directly. &lt;code&gt;undici&lt;/code&gt; is deliberately kept external (rather than bundled) so that downstream consumers don&#39;t end up with two copies of &lt;code&gt;undici&lt;/code&gt; in their bundle — which would break &lt;code&gt;instanceof Request&lt;/code&gt;/&lt;code&gt;Response&lt;/code&gt;/&lt;code&gt;Headers&lt;/code&gt; checks across the boundary and prevent &lt;code&gt;setGlobalDispatcher&lt;/code&gt; / proxy configuration from applying to the bundled copy.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;vitest&lt;/code&gt; has been added as an optional &lt;code&gt;peerDependency&lt;/code&gt; because the &lt;code&gt;./test-helpers&lt;/code&gt; sub-export uses &lt;code&gt;vitest&lt;/code&gt;&#39;s &lt;code&gt;vi&lt;/code&gt;, &lt;code&gt;beforeEach&lt;/code&gt;, and &lt;code&gt;afterEach&lt;/code&gt; APIs at runtime; consumers that import from &lt;code&gt;./test-helpers&lt;/code&gt; must have &lt;code&gt;vitest&lt;/code&gt; installed themselves.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/@cloudflare/vitest-pool-workers@0.16.9</id>
+    <updated>2026-05-22T13:22:23Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fvitest-pool-workers%400.16.9"/>
+    <title>@cloudflare/vitest-pool-workers@0.16.9</title>
+    <content type="html">&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13933&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13933/hovercard&quot;&gt;#13933&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/90092c0bca526e2e08a25fe7969534426eb6fd9f&quot;&gt;&lt;code&gt;90092c0&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Derive bundler externals from &lt;code&gt;package.json&lt;/code&gt; and shrink the published bundle&lt;/p&gt;
+&lt;p&gt;The bundler&#39;s &lt;code&gt;external&lt;/code&gt; list was previously hand-maintained and out of sync with &lt;code&gt;package.json&lt;/code&gt; — &lt;code&gt;undici&lt;/code&gt; and &lt;code&gt;semver&lt;/code&gt; were both listed as external despite being only &lt;code&gt;devDependencies&lt;/code&gt;. The published &lt;code&gt;dist/pool/index.mjs&lt;/code&gt; consequently contained a top-level &lt;code&gt;import { fetch } from &quot;undici&quot;&lt;/code&gt; that was only resolvable because pnpm happened to hoist &lt;code&gt;undici&lt;/code&gt; from other packages&#39; devDependencies during local development.&lt;/p&gt;
+&lt;p&gt;The bundler now derives its &lt;code&gt;external&lt;/code&gt; list from &lt;code&gt;dependencies&lt;/code&gt; + &lt;code&gt;peerDependencies&lt;/code&gt; in &lt;code&gt;package.json&lt;/code&gt;, making it impossible for a &lt;code&gt;devDependency&lt;/code&gt; to silently end up externalized.&lt;/p&gt;
+&lt;p&gt;Combined with the new &lt;code&gt;&quot;sideEffects&quot;: false&lt;/code&gt; declaration in &lt;code&gt;@cloudflare/workers-utils&lt;/code&gt;, the unused &lt;code&gt;cloudflared&lt;/code&gt; / &lt;code&gt;tunnel&lt;/code&gt; exports (and their transitive &lt;code&gt;undici&lt;/code&gt; import) are now tree-shaken out of the pool entirely. &lt;code&gt;dist/pool/index.mjs&lt;/code&gt; no longer references &lt;code&gt;undici&lt;/code&gt; at all, and shrinks from ~489 KB to ~125 KB.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Updated dependencies [&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/52e9082e32d7bffaeca92f27ab472b56964ba2bb&quot;&gt;&lt;code&gt;52e9082&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/07336888e0bc82925e4023f5b72a0062f10d77b8&quot;&gt;&lt;code&gt;0733688&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/fc1f7b977908b78a4379d1d7b261ca7c69022ba3&quot;&gt;&lt;code&gt;fc1f7b9&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/30657e1db097135d97209c3ae0cc623fc66827b9&quot;&gt;&lt;code&gt;30657e1&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/8c569c6232588594e7a48219bbd020955f5fd5a4&quot;&gt;&lt;code&gt;8c569c6&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/f598eac72bcdf838ba890bcbd100e99ee8fac17f&quot;&gt;&lt;code&gt;f598eac&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/3a1fbed5988efe03ae50cc502eff6a4785728396&quot;&gt;&lt;code&gt;3a1fbed&lt;/code&gt;&lt;/a&gt;]:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;wrangler@4.94.0&lt;/li&gt;
+&lt;li&gt;miniflare@4.20260521.0&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/@cloudflare/vite-plugin@1.38.0</id>
+    <updated>2026-05-22T13:22:20Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fvite-plugin%401.38.0"/>
+    <title>@cloudflare/vite-plugin@1.38.0</title>
+    <content type="html">&lt;h3&gt;Minor Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13989&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13989/hovercard&quot;&gt;#13989&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/f598eac72bcdf838ba890bcbd100e99ee8fac17f&quot;&gt;&lt;code&gt;f598eac&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/MattieTK&quot;&gt;@MattieTK&lt;/a&gt;! - Print a QR code alongside the tunnel URL when sharing via Cloudflare Tunnel&lt;/p&gt;
+&lt;p&gt;When a tunnel is started (via &lt;code&gt;wrangler dev --tunnel&lt;/code&gt; or the Vite plugin with &lt;code&gt;tunnel: true&lt;/code&gt;), a scannable QR code is now printed to the terminal beneath the tunnel URL. This makes it easy to open the tunnel on a mobile device without manually copying the URL.&lt;/p&gt;
+&lt;p&gt;The QR code uses Unicode block characters for a compact representation and is generated best-effort -- if generation fails for any reason, the tunnel URL is still displayed as before.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Updated dependencies [&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/52e9082e32d7bffaeca92f27ab472b56964ba2bb&quot;&gt;&lt;code&gt;52e9082&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/07336888e0bc82925e4023f5b72a0062f10d77b8&quot;&gt;&lt;code&gt;0733688&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/fc1f7b977908b78a4379d1d7b261ca7c69022ba3&quot;&gt;&lt;code&gt;fc1f7b9&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/30657e1db097135d97209c3ae0cc623fc66827b9&quot;&gt;&lt;code&gt;30657e1&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/8c569c6232588594e7a48219bbd020955f5fd5a4&quot;&gt;&lt;code&gt;8c569c6&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/f598eac72bcdf838ba890bcbd100e99ee8fac17f&quot;&gt;&lt;code&gt;f598eac&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/3a1fbed5988efe03ae50cc502eff6a4785728396&quot;&gt;&lt;code&gt;3a1fbed&lt;/code&gt;&lt;/a&gt;]:
+&lt;ul&gt;
+&lt;li&gt;wrangler@4.94.0&lt;/li&gt;
+&lt;li&gt;miniflare@4.20260521.0&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/@cloudflare/pages-shared@0.13.139</id>
+    <updated>2026-05-22T13:22:17Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fpages-shared%400.13.139"/>
+    <title>@cloudflare/pages-shared@0.13.139</title>
+    <content type="html">&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Updated dependencies [&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/07336888e0bc82925e4023f5b72a0062f10d77b8&quot;&gt;&lt;code&gt;0733688&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/30657e1db097135d97209c3ae0cc623fc66827b9&quot;&gt;&lt;code&gt;30657e1&lt;/code&gt;&lt;/a&gt;]:
+&lt;ul&gt;
+&lt;li&gt;miniflare@4.20260521.0&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/@cloudflare/cli-shared-helpers@0.1.4</id>
+    <updated>2026-05-22T13:22:14Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fcli-shared-helpers%400.1.4"/>
+    <title>@cloudflare/cli-shared-helpers@0.1.4</title>
+    <content type="html">&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Updated dependencies [&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/90092c0bca526e2e08a25fe7969534426eb6fd9f&quot;&gt;&lt;code&gt;90092c0&lt;/code&gt;&lt;/a&gt;]:
+&lt;ul&gt;
+&lt;li&gt;@cloudflare/workers-utils@0.21.1&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/wrangler@4.93.1</id>
+    <updated>2026-05-21T11:29:48Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/wrangler%404.93.1"/>
+    <title>wrangler@4.93.1</title>
+    <content type="html">&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13978&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13978/hovercard&quot;&gt;#13978&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/fa1f61f5c6f4b8e363eaabdc68baafa29635bacd&quot;&gt;&lt;code&gt;fa1f61f&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/sassyconsultingllc&quot;&gt;@sassyconsultingllc&lt;/a&gt;! - Bump &lt;code&gt;ws&lt;/code&gt; from 8.18.0 to 8.20.1 to address &lt;a title=&quot;GHSA-58qx-3vcg-4xpx&quot; data-hovercard-type=&quot;advisory&quot; data-hovercard-url=&quot;/advisories/GHSA-58qx-3vcg-4xpx/hovercard&quot; href=&quot;https://github.com/advisories/GHSA-58qx-3vcg-4xpx&quot;&gt;GHSA-58qx-3vcg-4xpx&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/advisories/GHSA-58qx-3vcg-4xpx&quot;&gt;GHSA-58qx-3vcg-4xpx&lt;/a&gt; / &lt;a href=&quot;https://www.cve.org/CVERecord?id=CVE-2026-45736&quot; rel=&quot;nofollow&quot;&gt;CVE-2026-45736&lt;/a&gt; reports an uninitialized-memory disclosure in &lt;code&gt;ws@&amp;lt;8.20.1&lt;/code&gt; when a &lt;code&gt;TypedArray&lt;/code&gt; is passed as the reason argument to &lt;code&gt;WebSocket.close()&lt;/code&gt;. The fix shipped in &lt;a href=&quot;https://github.com/websockets/ws/commit/c0327ec15a54d701eb6ccefaa8bef328cfc03086&quot;&gt;ws@8.20.1&lt;/a&gt; on 2026-05-12. This change bumps the workspace catalog entry so that &lt;code&gt;miniflare&lt;/code&gt;, &lt;code&gt;wrangler&lt;/code&gt;, and &lt;code&gt;@cloudflare/vite-plugin&lt;/code&gt; all pick up the patched release.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13977&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13977/hovercard&quot;&gt;#13977&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/2679e057d4e3bcc9b460b7fa03a900f62e43fc94&quot;&gt;&lt;code&gt;2679e05&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/apps/dependabot&quot;&gt;@dependabot&lt;/a&gt;! - Update dependencies of &quot;miniflare&quot;, &quot;wrangler&quot;&lt;/p&gt;
+&lt;p&gt;The following dependency versions have been updated:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Dependency&lt;/th&gt;
+&lt;th&gt;From&lt;/th&gt;
+&lt;th&gt;To&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;workerd&lt;/td&gt;
+&lt;td&gt;1.20260518.1&lt;/td&gt;
+&lt;td&gt;1.20260519.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13984&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13984/hovercard&quot;&gt;#13984&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/7e40d98aacd79014fb88b08cc8487909a7c4d749&quot;&gt;&lt;code&gt;7e40d98&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/apps/dependabot&quot;&gt;@dependabot&lt;/a&gt;! - Update dependencies of &quot;miniflare&quot;, &quot;wrangler&quot;&lt;/p&gt;
+&lt;p&gt;The following dependency versions have been updated:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Dependency&lt;/th&gt;
+&lt;th&gt;From&lt;/th&gt;
+&lt;th&gt;To&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;workerd&lt;/td&gt;
+&lt;td&gt;1.20260519.1&lt;/td&gt;
+&lt;td&gt;1.20260520.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13963&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13963/hovercard&quot;&gt;#13963&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/adc922174cb03133d632632d6ebcd1f05b176358&quot;&gt;&lt;code&gt;adc9221&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/gabivlj&quot;&gt;@gabivlj&lt;/a&gt;! - Preserve sibling container image tags during local dev cleanup&lt;/p&gt;
+&lt;p&gt;Wrangler now keeps other &lt;code&gt;cloudflare-dev&lt;/code&gt; image tags from the same dev session when multiple containers share a Dockerfile. Previously, duplicate-image cleanup could remove earlier container tags if Docker BuildKit produced the same image ID for each build.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13839&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13839/hovercard&quot;&gt;#13839&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/735852dc7f8641a740dff01daf5943a5d477fbe1&quot;&gt;&lt;code&gt;735852d&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/matingathani&quot;&gt;@matingathani&lt;/a&gt;! - fix: show actionable hint when &lt;code&gt;/memberships&lt;/code&gt; returns a bad-credentials error (code 9106)&lt;/p&gt;
+&lt;p&gt;Previously, &lt;code&gt;wrangler&lt;/code&gt; threw a raw Cloudflare API error (&quot;Missing X-Auth-Key, X-Auth-Email or Authorization headers&quot;) with no guidance. Now it emits a &lt;code&gt;UserError&lt;/code&gt; explaining that an environment variable such as &lt;code&gt;CLOUDFLARE_API_TOKEN&lt;/code&gt;, &lt;code&gt;CLOUDFLARE_API_KEY&lt;/code&gt;, or &lt;code&gt;CLOUDFLARE_EMAIL&lt;/code&gt; may be set to an invalid value, and suggests running &lt;code&gt;wrangler logout&lt;/code&gt; / &lt;code&gt;wrangler login&lt;/code&gt; to re-authenticate.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13912&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13912/hovercard&quot;&gt;#13912&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/d803737b74f7cb08c6a91c64a649a96307fe9dc6&quot;&gt;&lt;code&gt;d803737&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Fix &lt;code&gt;/cdn-cgi/*&lt;/code&gt; host validation incorrectly accepting subdomains of exact configured routes&lt;/p&gt;
+&lt;p&gt;Miniflare&#39;s &lt;code&gt;/cdn-cgi/*&lt;/code&gt; host/origin validator was treating exact configured routes the same as wildcard configured routes, so a request whose &lt;code&gt;Host&lt;/code&gt; or &lt;code&gt;Origin&lt;/code&gt; hostname was a subdomain of an exact route (e.g. &lt;code&gt;sub.my-custom-site.com&lt;/code&gt; for a &lt;code&gt;my-custom-site.com/*&lt;/code&gt; route) was incorrectly accepted. Exact configured routes and the configured &lt;code&gt;upstream&lt;/code&gt; hostname are now required to match the request hostname exactly. Subdomain matching is only applied to wildcard routes such as &lt;code&gt;*.example.com/*&lt;/code&gt;. Localhost hostnames continue to be allowed as before.&lt;/p&gt;
+&lt;p&gt;This affects &lt;code&gt;wrangler dev&lt;/code&gt; and local development through &lt;code&gt;@cloudflare/vite-plugin&lt;/code&gt;, both of which use Miniflare under the hood.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13919&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13919/hovercard&quot;&gt;#13919&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/c7eab7f435771de716f2c59597506f6f2fcf69be&quot;&gt;&lt;code&gt;c7eab7f&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Fix the outbound &lt;code&gt;CF-Worker&lt;/code&gt; header reflecting the route pattern hostname instead of the parent zone, and falling back to &lt;code&gt;&amp;lt;worker-name&amp;gt;.example.com&lt;/code&gt; under &lt;code&gt;vite dev&lt;/code&gt;, &lt;code&gt;vitest-pool-workers&lt;/code&gt;, and &lt;code&gt;getPlatformProxy&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Two related issues affected the &lt;code&gt;CF-Worker&lt;/code&gt; header on outbound subrequests in local development:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Under &lt;code&gt;@cloudflare/vite-plugin&lt;/code&gt;, &lt;code&gt;@cloudflare/vitest-pool-workers&lt;/code&gt;, and &lt;code&gt;getPlatformProxy&lt;/code&gt;, the header fell back to &lt;code&gt;&amp;lt;worker-name&amp;gt;.example.com&lt;/code&gt; even when &lt;code&gt;routes&lt;/code&gt; were configured, because &lt;code&gt;unstable_getMiniflareWorkerOptions&lt;/code&gt; and the equivalent &lt;code&gt;getPlatformProxy&lt;/code&gt; worker-options path did not propagate a &lt;code&gt;zone&lt;/code&gt; value to Miniflare. This broke local development against services that reject unknown &lt;code&gt;CF-Worker&lt;/code&gt; hosts (for example, Apple WeatherKit returns &lt;code&gt;403 Forbidden&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Across the above paths and &lt;code&gt;wrangler dev --local&lt;/code&gt;, when a route used the &lt;code&gt;zone_name&lt;/code&gt; field (for example &lt;code&gt;{ pattern: &quot;foo.example.com/*&quot;, zone_name: &quot;example.com&quot; }&lt;/code&gt;), the header was set to the pattern&#39;s hostname (&lt;code&gt;foo.example.com&lt;/code&gt;) rather than the zone name (&lt;code&gt;example.com&lt;/code&gt;). Production &lt;a href=&quot;https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-worker&quot; rel=&quot;nofollow&quot;&gt;sets &lt;code&gt;CF-Worker&lt;/code&gt; to the zone name that owns the Worker&lt;/a&gt;, so this was inconsistent with deployed behaviour.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;Both bugs are fixed: the new &lt;code&gt;unstable_getMiniflareWorkerOptions&lt;/code&gt; / &lt;code&gt;getPlatformProxy&lt;/code&gt; path now propagates a &lt;code&gt;zone&lt;/code&gt; derived from the first configured route, and all four local-dev paths now prefer a route&#39;s explicit &lt;code&gt;zone_name&lt;/code&gt; over the pattern hostname when computing that zone. When &lt;code&gt;zone_name&lt;/code&gt; isn&#39;t set, the existing best-effort behaviour is preserved — for &lt;code&gt;wrangler dev&lt;/code&gt; this means &lt;code&gt;dev.host&lt;/code&gt; is still honoured as a local override and the pattern hostname is used as a final fallback. Resolving the parent zone for &lt;code&gt;zone_id&lt;/code&gt;-only, &lt;code&gt;custom_domain&lt;/code&gt;, or plain-string routes would require an API lookup, so locally we still approximate it with the pattern hostname.&lt;/p&gt;
+&lt;p&gt;Note: &lt;code&gt;dev.host&lt;/code&gt; is intentionally not consulted by the &lt;code&gt;unstable_getMiniflareWorkerOptions&lt;/code&gt; / &lt;code&gt;getPlatformProxy&lt;/code&gt; paths — the &lt;code&gt;dev&lt;/code&gt; config block is specific to &lt;code&gt;wrangler dev&lt;/code&gt;.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13990&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13990/hovercard&quot;&gt;#13990&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/e04e180d4adfe7d50db835508940e7ef7e9d9706&quot;&gt;&lt;code&gt;e04e180&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Improve the log message shown when an asset upload attempt fails and is retried&lt;/p&gt;
+&lt;p&gt;The retry message now reports which attempt is being made (e.g. &lt;code&gt;Asset upload failed. Retrying... 1 of 5 attempts.&lt;/code&gt;), making it easier to gauge how close Wrangler is to exhausting its retry budget. The raw error object is no longer appended to this user-facing message; it is instead logged at debug level (visible via &lt;code&gt;WRANGLER_LOG=debug&lt;/code&gt;).&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13954&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13954/hovercard&quot;&gt;#13954&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/62abf970cc9da954853856156ba6fce9bef95678&quot;&gt;&lt;code&gt;62abf97&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Read the on-disk OAuth state lazily so &lt;code&gt;CLOUDFLARE_API_TOKEN&lt;/code&gt; from &lt;code&gt;.env&lt;/code&gt; takes priority correctly&lt;/p&gt;
+&lt;p&gt;Wrangler previously read its OAuth state from the user auth config file (for example &lt;code&gt;~/.config/.wrangler/config/default.toml&lt;/code&gt;) eagerly at module-import time. That happens &lt;em&gt;before&lt;/em&gt; &lt;code&gt;.env&lt;/code&gt; files are loaded, so the in-memory state would always hold the OAuth tokens even when the user only wanted to authenticate via &lt;code&gt;CLOUDFLARE_API_TOKEN&lt;/code&gt;. If that stored OAuth token happened to be expired, Wrangler would try to refresh it (and fail), aborting the command with &lt;code&gt;Failed to fetch auth token: 400 Bad Request&lt;/code&gt; and &lt;code&gt;Not logged in.&lt;/code&gt; — even though a valid API token was in scope.&lt;/p&gt;
+&lt;p&gt;Wrangler now reads the auth config file on demand, after &lt;code&gt;.env&lt;/code&gt; has been loaded. When &lt;code&gt;CLOUDFLARE_API_TOKEN&lt;/code&gt; (or &lt;code&gt;CLOUDFLARE_API_KEY&lt;/code&gt; + &lt;code&gt;CLOUDFLARE_EMAIL&lt;/code&gt;) is present, the OAuth state on disk is no longer consulted, the OAuth refresh endpoint is no longer called, and the env-based token is used directly. Sibling-process refresh-token rotation is also handled naturally because every check reads the current file contents.&lt;/p&gt;
+&lt;p&gt;Internally, the exported &lt;code&gt;reinitialiseAuthTokens()&lt;/code&gt; function is removed — there is no module-level OAuth cache left to invalidate.&lt;/p&gt;
+&lt;p&gt;Fixes &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/issues/13744&quot; data-hovercard-type=&quot;issue&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/issues/13744/hovercard&quot;&gt;#13744&lt;/a&gt;.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13951&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13951/hovercard&quot;&gt;#13951&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/e349fe04851f421f3bd5d6cc288a12aeef0fd521&quot;&gt;&lt;code&gt;e349fe0&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/sejoker&quot;&gt;@sejoker&lt;/a&gt;! - Enforce minimum 60 second interval for R2 Data Catalog sinks&lt;/p&gt;
+&lt;p&gt;R2 Data Catalog sinks now require a minimum &lt;code&gt;--roll-interval&lt;/code&gt; of 60 seconds to prevent compaction issues in the R2 Data Catalog. This validation is applied when creating sinks via &lt;code&gt;wrangler pipelines sinks create&lt;/code&gt; with type &lt;code&gt;r2-data-catalog&lt;/code&gt;, and during the interactive &lt;code&gt;wrangler pipelines setup&lt;/code&gt; flow.&lt;/p&gt;
+&lt;p&gt;Regular R2 sinks are not affected and can still use intervals as low as 10 seconds.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13959&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13959/hovercard&quot;&gt;#13959&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/da0fa8c977727f90b6340d72cb7169f0064b7eae&quot;&gt;&lt;code&gt;da0fa8c&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/dmmulroy&quot;&gt;@dmmulroy&lt;/a&gt;! - Recognize Artifacts repositories that are still being created&lt;/p&gt;
+&lt;p&gt;Wrangler&#39;s Artifacts repo status type now accepts the &lt;code&gt;creating&lt;/code&gt; lifecycle state alongside existing in-progress statuses.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13964&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13964/hovercard&quot;&gt;#13964&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/a5c936553d1b9d09582222ab8426febe7862b994&quot;&gt;&lt;code&gt;a5c9365&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/danielrs&quot;&gt;@danielrs&lt;/a&gt;! - Use dedicated API endpoint for &lt;code&gt;wrangler secret bulk&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;wrangler secret bulk&lt;/code&gt; now uses a more efficient, dedicated API endpoint. This reduces the operation from 2 API calls to 1 and eliminates the risk of accidentally affecting non-secret bindings.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;Updated dependencies [&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/fa1f61f5c6f4b8e363eaabdc68baafa29635bacd&quot;&gt;&lt;code&gt;fa1f61f&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/2679e057d4e3bcc9b460b7fa03a900f62e43fc94&quot;&gt;&lt;code&gt;2679e05&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/7e40d98aacd79014fb88b08cc8487909a7c4d749&quot;&gt;&lt;code&gt;7e40d98&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/d803737b74f7cb08c6a91c64a649a96307fe9dc6&quot;&gt;&lt;code&gt;d803737&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/59cd880c559023962cb2537734a7ed511b18b269&quot;&gt;&lt;code&gt;59cd880&lt;/code&gt;&lt;/a&gt;, &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/e8c2031b9ad7cec110e4310f95cf6cef72992029&quot;&gt;&lt;code&gt;e8c2031&lt;/code&gt;&lt;/a&gt;]:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;miniflare@4.20260520.0&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/miniflare@4.20260520.0</id>
+    <updated>2026-05-21T11:29:56Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/miniflare%404.20260520.0"/>
+    <title>miniflare@4.20260520.0</title>
+    <content type="html">&lt;h3&gt;Patch Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13978&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13978/hovercard&quot;&gt;#13978&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/fa1f61f5c6f4b8e363eaabdc68baafa29635bacd&quot;&gt;&lt;code&gt;fa1f61f&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/sassyconsultingllc&quot;&gt;@sassyconsultingllc&lt;/a&gt;! - Bump &lt;code&gt;ws&lt;/code&gt; from 8.18.0 to 8.20.1 to address &lt;a title=&quot;GHSA-58qx-3vcg-4xpx&quot; data-hovercard-type=&quot;advisory&quot; data-hovercard-url=&quot;/advisories/GHSA-58qx-3vcg-4xpx/hovercard&quot; href=&quot;https://github.com/advisories/GHSA-58qx-3vcg-4xpx&quot;&gt;GHSA-58qx-3vcg-4xpx&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/advisories/GHSA-58qx-3vcg-4xpx&quot;&gt;GHSA-58qx-3vcg-4xpx&lt;/a&gt; / &lt;a href=&quot;https://www.cve.org/CVERecord?id=CVE-2026-45736&quot; rel=&quot;nofollow&quot;&gt;CVE-2026-45736&lt;/a&gt; reports an uninitialized-memory disclosure in &lt;code&gt;ws@&amp;lt;8.20.1&lt;/code&gt; when a &lt;code&gt;TypedArray&lt;/code&gt; is passed as the reason argument to &lt;code&gt;WebSocket.close()&lt;/code&gt;. The fix shipped in &lt;a href=&quot;https://github.com/websockets/ws/commit/c0327ec15a54d701eb6ccefaa8bef328cfc03086&quot;&gt;ws@8.20.1&lt;/a&gt; on 2026-05-12. This change bumps the workspace catalog entry so that &lt;code&gt;miniflare&lt;/code&gt;, &lt;code&gt;wrangler&lt;/code&gt;, and &lt;code&gt;@cloudflare/vite-plugin&lt;/code&gt; all pick up the patched release.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13977&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13977/hovercard&quot;&gt;#13977&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/2679e057d4e3bcc9b460b7fa03a900f62e43fc94&quot;&gt;&lt;code&gt;2679e05&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/apps/dependabot&quot;&gt;@dependabot&lt;/a&gt;! - Update dependencies of &quot;miniflare&quot;, &quot;wrangler&quot;&lt;/p&gt;
+&lt;p&gt;The following dependency versions have been updated:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Dependency&lt;/th&gt;
+&lt;th&gt;From&lt;/th&gt;
+&lt;th&gt;To&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;workerd&lt;/td&gt;
+&lt;td&gt;1.20260518.1&lt;/td&gt;
+&lt;td&gt;1.20260519.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13984&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13984/hovercard&quot;&gt;#13984&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/7e40d98aacd79014fb88b08cc8487909a7c4d749&quot;&gt;&lt;code&gt;7e40d98&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/apps/dependabot&quot;&gt;@dependabot&lt;/a&gt;! - Update dependencies of &quot;miniflare&quot;, &quot;wrangler&quot;&lt;/p&gt;
+&lt;p&gt;The following dependency versions have been updated:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Dependency&lt;/th&gt;
+&lt;th&gt;From&lt;/th&gt;
+&lt;th&gt;To&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;workerd&lt;/td&gt;
+&lt;td&gt;1.20260519.1&lt;/td&gt;
+&lt;td&gt;1.20260520.1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13912&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13912/hovercard&quot;&gt;#13912&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/d803737b74f7cb08c6a91c64a649a96307fe9dc6&quot;&gt;&lt;code&gt;d803737&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Fix &lt;code&gt;/cdn-cgi/*&lt;/code&gt; host validation incorrectly accepting subdomains of exact configured routes&lt;/p&gt;
+&lt;p&gt;Miniflare&#39;s &lt;code&gt;/cdn-cgi/*&lt;/code&gt; host/origin validator was treating exact configured routes the same as wildcard configured routes, so a request whose &lt;code&gt;Host&lt;/code&gt; or &lt;code&gt;Origin&lt;/code&gt; hostname was a subdomain of an exact route (e.g. &lt;code&gt;sub.my-custom-site.com&lt;/code&gt; for a &lt;code&gt;my-custom-site.com/*&lt;/code&gt; route) was incorrectly accepted. Exact configured routes and the configured &lt;code&gt;upstream&lt;/code&gt; hostname are now required to match the request hostname exactly. Subdomain matching is only applied to wildcard routes such as &lt;code&gt;*.example.com/*&lt;/code&gt;. Localhost hostnames continue to be allowed as before.&lt;/p&gt;
+&lt;p&gt;This affects &lt;code&gt;wrangler dev&lt;/code&gt; and local development through &lt;code&gt;@cloudflare/vite-plugin&lt;/code&gt;, both of which use Miniflare under the hood.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13971&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13971/hovercard&quot;&gt;#13971&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/59cd880c559023962cb2537734a7ed511b18b269&quot;&gt;&lt;code&gt;59cd880&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Improve error diagnostics in the Browser Run binding worker&lt;/p&gt;
+&lt;p&gt;When the local Browser Run binding failed to reach an upstream — for example when Chrome failed to launch and miniflare&#39;s loopback &lt;code&gt;/browser/launch&lt;/code&gt; endpoint returned a 500 with a stack-trace text body — the binding worker would call &lt;code&gt;response.json()&lt;/code&gt; on the non-JSON body and throw an opaque &lt;code&gt;SyntaxError: Unexpected token X, &quot;...&quot; is not valid JSON&lt;/code&gt;. The actual upstream error message (e.g. &lt;code&gt;Chrome readiness probe at ... timed out after 5000ms&lt;/code&gt;) was discarded.&lt;/p&gt;
+&lt;p&gt;The binding worker now reads the response body as text first, surfaces the HTTP status and body content in the thrown error, and chains the original &lt;code&gt;SyntaxError&lt;/code&gt; via &lt;code&gt;cause&lt;/code&gt; when the body was a 2xx response that didn&#39;t parse as JSON. This makes both local-dev failures and CI test flakes self-diagnosing.&lt;/p&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13980&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13980/hovercard&quot;&gt;#13980&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/e8c2031b9ad7cec110e4310f95cf6cef72992029&quot;&gt;&lt;code&gt;e8c2031&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/petebacondarwin&quot;&gt;@petebacondarwin&lt;/a&gt;! - Recover from corrupted &lt;code&gt;@puppeteer/browsers&lt;/code&gt; cache when launching a Browser Run session&lt;/p&gt;
+&lt;p&gt;When Miniflare&#39;s local Browser Run binding launches Chrome, it calls &lt;code&gt;@puppeteer/browsers&lt;/code&gt;&#39; &lt;code&gt;install()&lt;/code&gt; to ensure the binary is present. If a previous &lt;code&gt;install()&lt;/code&gt; was interrupted mid-extraction (test timeout, process kill, antivirus quarantine), the cache directory can be left partially populated — the folder exists but the executable inside it is missing. &lt;code&gt;install()&lt;/code&gt; then throws &lt;code&gt;The browser folder (...) exists but the executable (...) is missing&lt;/code&gt; on every subsequent call within the same process and the entire test session, breaking every later Browser Run operation until the cache is manually cleared.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;launchBrowser&lt;/code&gt; now catches that specific error, removes the corrupted cache directory, and retries &lt;code&gt;install()&lt;/code&gt; once. If the corruption persists after cleanup, the original error is rethrown with a clearer message.&lt;/p&gt;
+&lt;p&gt;This complements &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13971&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13971/hovercard&quot;&gt;#13971&lt;/a&gt;, which surfaced the original error from inside the binding worker. With that diagnostic in place and this self-healing layer, the previously-intermittent &quot;browser folder exists but executable missing&quot; failure mode should no longer fail an entire CI run.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+  <entry>
+    <id>tag:github.com,2008:Repository/426659329/@cloudflare/workflows-shared@0.11.0</id>
+    <updated>2026-05-21T11:29:50Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/cloudflare/workers-sdk/releases/tag/%40cloudflare%2Fworkflows-shared%400.11.0"/>
+    <title>@cloudflare/workflows-shared@0.11.0</title>
+    <content type="html">&lt;h3&gt;Minor Changes&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;a href=&quot;https://github.com/cloudflare/workers-sdk/pull/13983&quot; data-hovercard-type=&quot;pull_request&quot; data-hovercard-url=&quot;/cloudflare/workers-sdk/pull/13983/hovercard&quot;&gt;#13983&lt;/a&gt; &lt;a href=&quot;https://github.com/cloudflare/workers-sdk/commit/98035862e1e303ca1f380d8d2694ad3d4659e3be&quot;&gt;&lt;code&gt;9803586&lt;/code&gt;&lt;/a&gt; Thanks &lt;a href=&quot;https://github.com/vaishnav-mk&quot;&gt;@vaishnav-mk&lt;/a&gt;! - Add rollback support for local Workflows development&lt;/p&gt;
+&lt;p&gt;Workflow steps can now register a compensation callback with trailing rollback options: &lt;code&gt;step.do(name, fn, { rollback })&lt;/code&gt; and &lt;code&gt;step.do(name, config, fn, { rollback, rollbackConfig })&lt;/code&gt;. When the workflow fails, the local engine runs every registered rollback in reverse step-start order (LIFO), giving steps the opportunity to undo their side effects.&lt;/p&gt;
+&lt;p&gt;Each rollback executes through an internal rollback-scoped &lt;code&gt;Context.do&lt;/code&gt;, so it inherits the existing retry / timeout / attempt-tracking machinery. &lt;code&gt;rollbackConfig&lt;/code&gt; lets users override the per-rollback config.&lt;/p&gt;
+&lt;p&gt;Note: the public rollback option type lands with workerd&#39;s &lt;code&gt;workflows_step_rollback&lt;/code&gt; compat flag. Until that ships, the trailing rollback options only flow through when called through the StepPromise wrapper from a worker that has the flag enabled.&lt;/p&gt;
+&lt;/li&gt;
+&lt;/ul&gt;</content>
+    <author>
+      <name>workers-devprod</name>
+    </author>
+    <media:thumbnail height="30" width="30" url="https://avatars.githubusercontent.com/u/116369605?s=60&amp;v=4"/>
+  </entry>
+</feed>
