@@ -9,7 +9,7 @@ account_id = "cc231edbff18405233612d7afb657f1f"
 # results Sunday morning. Use named-day form per cf-cron-strictness pattern
 # (Cloudflare rejected "0 0 * * 0" with code 10100 — numeric form failed).
 [triggers]
-crons = ["0 0 * * SUN"]
+crons = ["0 0 * * SUN", "0 9 * * *"]
 
 [vars]
 # Persona renamed 2026-05-13 (OPS-LOCKE-LOOKOUT-RENAME, Crew Bible §7).
@@ -55,4 +55,10 @@ binding = "AI"
 
 [[kv_namespaces]]
 binding = "CHANGELOG_SEEN"
-id = "PLACEHOLDER_FILLED_IN_C5"
+id = "e93834a03bce4b29adc4d8ae868c1b85"
+
+# C5 added 2026-05-25: daily digest queue for changelog-watcher (per C4 thinking).
+# Kept separate from CHANGELOG_SEEN to avoid KV pollution with seen-tracking semantics.
+[[kv_namespaces]]
+binding = "DAILY_DIGEST_KV"
+id = "c0042497895a4414907f5559884ba9b0"

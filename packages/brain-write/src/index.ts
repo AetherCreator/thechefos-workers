@@ -456,6 +456,10 @@ app.post('/api/brain/push', async (c) => {
 
 // Auth middleware — same x-webhook-secret pattern
 app.use('/api/ops/*', async (c, next) => {
+  // Bypass for /api/ops/file — uses X-Brain-Write-Key auth in handler (C5 fix 2026-05-25)
+  if (c.req.path === "/api/ops/file") {
+    return next()
+  }
   const secret = c.req.header('x-webhook-secret')
   if (!secret || secret !== c.env.WEBHOOK_SECRET) {
     return c.json({ error: 'Unauthorized — invalid or missing webhook secret' }, 401)
