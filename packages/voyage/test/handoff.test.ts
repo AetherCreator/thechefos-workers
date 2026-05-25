@@ -42,6 +42,9 @@ function makeEnv(voyageStateData: Record<string, string> = {}, idempotencyData: 
     VOYAGE_IDEMPOTENCY: makeMockKV(idempotencyData),
     BRAIN_WRITE_BASE_URL: 'https://thechefos-brain-write.tveg-baking.workers.dev',
     BRAIN_WRITE_API_SECRET: 'test-secret',
+    SHIPS_DOCTOR_BOT_TOKEN: 'test-token',
+    TYLER_CHAT_ID: 'test-chat-id',
+    VOYAGE_ABORT_SECRET: 'abort-secret',
   };
 }
 
@@ -342,6 +345,9 @@ describe('Full 4-step end-to-end voyage', () => {
       VOYAGE_IDEMPOTENCY: idemKV,
       BRAIN_WRITE_BASE_URL: 'https://thechefos-brain-write.tveg-baking.workers.dev',
       BRAIN_WRITE_API_SECRET: 'test-secret',
+      SHIPS_DOCTOR_BOT_TOKEN: 'test-token',
+      TYLER_CHAT_ID: 'test-chat-id',
+      VOYAGE_ABORT_SECRET: 'abort-secret',
     };
 
     const voyage_id = 'voyage-e2e-001';

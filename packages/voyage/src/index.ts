@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { VoyageStartRequestSchema, HandoffPayloadSchema } from './schemas';
 import type { Env, VoyageRecord } from './types';
 import { advanceRole, IllegalTransitionError } from './state-machine';
 import { computeIdempotencyKey } from './idempotency';
 import { emitAudit } from './audit-emit';
+import { findStalledVoyages, pingShipsDoctor } from './stall-checker';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -124,6 +126,104 @@ app.post('/voyage/handoff', async (c) => {
   return c.json(responseBody, 200);
 });
 
+const EscalateSchema = z.object({
+  mode: z.enum(['block', 'fail', 'anomaly']),
+  reason: z.string().min(1),
+});
+
+app.post('/voyage/:id/escalate', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_body', issues: [{ message: 'invalid JSON' }] }, 400);
+  }
+
+  const parsed = EscalateSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues }, 400);
+  }
+
+  const { mode, reason } = parsed.data;
+  const id = c.req.param('id');
+  const raw = await c.env.VOYAGE_STATE.get(id);
+  if (!raw) return c.json({ error: 'not_found' }, 404);
+
+  const record: VoyageRecord = JSON.parse(raw);
+  const now = new Date().toISOString();
+
+  if (mode === 'block') {
+    record.status = 'blocked';
+    record.block_reason = reason;
+  } else if (mode === 'fail') {
+    record.status = 'failed';
+    record.current_role = 'closed';
+    record.block_reason = reason;
+  } else {
+    record.anomaly_log.push({ ts: now, reason });
+  }
+
+  const auditResult = await emitAudit(c.env, 'voyage_state_advance', id, { escalate: mode, reason });
+  if (!auditResult.ok) {
+    return c.json({ error: 'audit_emit_failed', detail: auditResult.error }, 503);
+  }
+
+  await c.env.VOYAGE_STATE.put(id, JSON.stringify(record));
+  return c.json({ voyage_id: id, record }, 200);
+});
+
+const AbortSchema = z.object({ reason: z.string().min(1) });
+
+app.post('/voyage/:id/abort', async (c) => {
+  if (c.req.header('X-Voyage-Abort-Secret') !== c.env.VOYAGE_ABORT_SECRET) {
+    return c.json({ error: 'unauthorized' }, 401);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'invalid_body', issues: [{ message: 'invalid JSON' }] }, 400);
+  }
+
+  const parsed = AbortSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.issues }, 400);
+  }
+
+  const id = c.req.param('id');
+  const raw = await c.env.VOYAGE_STATE.get(id);
+  if (!raw) return c.json({ error: 'not_found' }, 404);
+
+  const record: VoyageRecord = JSON.parse(raw);
+  record.status = 'aborted';
+  record.current_role = 'closed';
+  record.block_reason = 'aborted: ' + parsed.data.reason;
+
+  const auditResult = await emitAudit(c.env, 'voyage_abort', id, { reason: parsed.data.reason });
+  if (!auditResult.ok) {
+    return c.json({ error: 'audit_emit_failed', detail: auditResult.error }, 503);
+  }
+
+  await c.env.VOYAGE_STATE.put(id, JSON.stringify(record));
+  return c.json({ voyage_id: id, record }, 200);
+});
+
 app.all('*', (c) => c.json({ error: 'not_found' }, 404));
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
+    if (event.cron === '*/15 * * * *') {
+      ctx.waitUntil((async () => {
+        const now = new Date();
+        const stalled = await findStalledVoyages(env, now);
+        for (const voyage of stalled) {
+          const updated = { ...voyage, last_stall_ping_at: now.toISOString() };
+          await env.VOYAGE_STATE.put(voyage.voyage_id, JSON.stringify(updated));
+          await pingShipsDoctor(env, voyage);
+        }
+      })());
+    }
+  },
+};

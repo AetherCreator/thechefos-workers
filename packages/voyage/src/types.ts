@@ -30,4 +30,7 @@ export interface Env {
   VOYAGE_IDEMPOTENCY: KVNamespace;
   BRAIN_WRITE_BASE_URL: string;
   BRAIN_WRITE_API_SECRET: string;
+  SHIPS_DOCTOR_BOT_TOKEN: string;
+  TYLER_CHAT_ID: string;
+  VOYAGE_ABORT_SECRET: string;
 }
