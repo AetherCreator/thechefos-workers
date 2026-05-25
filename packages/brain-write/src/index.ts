@@ -6,6 +6,7 @@ import { validateComplete } from './complete-validator'
 import { buildAuditEntry, commitAuditEntry } from './complete-validator/audit'
 import { parse as parseYaml } from 'yaml'
 import { pingShipsDoctor } from './complete-validator/ping'
+import { handleOpsFile } from './ops-file'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -32,6 +33,8 @@ export interface Env {
   COMPLETE_VALIDATOR_DRY_RUN?: string // 'true' = dry-run (audit + log, no halt / no ping)
   CF_API_TOKEN?: string // optional; enables D1 cross-source SHA verification
   CF_ACCOUNT_ID?: string // optional; enables D1 cross-source SHA verification
+  // ops-file (locke-changelog-watcher C4)
+  BRAIN_WRITE_API_SECRET?: string // auth key for POST /api/ops/file (X-Brain-Write-Key header)
 }
 
 interface BrainPushPayload {
@@ -458,6 +461,15 @@ app.use('/api/ops/*', async (c, next) => {
     return c.json({ error: 'Unauthorized — invalid or missing webhook secret' }, 401)
   }
   await next()
+})
+
+// POST /api/ops/file — insert a new row into OPS-BOARD.md with idempotency.
+// Auth uses X-Brain-Write-Key header against BRAIN_WRITE_API_SECRET.
+// Called by locke-changelog-watcher and other automated actors.
+// This route intentionally bypasses the /api/ops/* webhook-secret middleware
+// so changelog-watcher can call it with a dedicated key.
+app.post('/api/ops/file', async (c) => {
+  return handleOpsFile(c.env, c.req.raw)
 })
 
 // GET /api/ops/list?filter=open|blocked|stale|all

@@ -5,6 +5,11 @@ import { isSeen, markSeen, buildSeenKey } from './seen';
 import { judgeSeverity } from './judge';
 import { validateChangelogLead } from '../../changelogSchema';
 import type { ChangelogLead } from '../../changelogSchema';
+import { triage } from './triage';
+import { fileLeadAsOpsRow } from './fileLead';
+import { emitHuntScaffold } from './huntScaffold';
+import { pingImmediate, queueDailyDigest } from './telegram';
+import { writeAuditEntry } from './audit';
 
 const WALL_BUDGET_MS = 240_000;
 const MAX_LEADS = 50;
@@ -79,6 +84,57 @@ export async function runChangelog(env: Env, _request: Request, _ctx: ExecutionC
     }
   }
 
+  // ── C4: triage + file + telegram + scaffold + audit ──────────────────────
+  const triage_results: Array<{
+    ops_id: string;
+    section: string;
+    priority: string;
+    filed_ok: boolean;
+    idempotency_hit?: boolean;
+    telegram?: string;
+    scaffold?: string;
+    audit_ok: boolean;
+  }> = [];
+  // C4 soft-fail errors kept separate so existing errors field shape is preserved.
+  const triage_errors: string[] = [];
+
+  for (const lead of leads) {
+    const decision = triage(lead);
+    const filed = await fileLeadAsOpsRow(env, lead, decision);
+    if (!filed.ok) {
+      triage_errors.push(`ops_file_failed ${lead.dep_name}: ${filed.error || 'unknown'}`);
+    }
+
+    // Telegram dispatch
+    if (decision.telegram === 'immediate') {
+      await pingImmediate(env, lead).catch(() => {});
+    } else if (decision.telegram === 'daily_digest') {
+      await queueDailyDigest(env, lead).catch(() => {});
+    }
+
+    // HUNT.md scaffold for breaking_change × high
+    if (decision.auto_fork_hunt) {
+      await emitHuntScaffold(env, lead).catch(() => {});
+    }
+
+    // Guard Layer audit JSON
+    const auditResult = await writeAuditEntry(env, lead, decision, filed);
+    if (!auditResult.ok) {
+      triage_errors.push(`audit_failed ${lead.dep_name}: ${auditResult.error || 'unknown'}`);
+    }
+
+    triage_results.push({
+      ops_id: filed.ops_id,
+      section: decision.section,
+      priority: decision.priority,
+      filed_ok: filed.ok,
+      idempotency_hit: filed.idempotency_hit,
+      telegram: decision.telegram,
+      scaffold: decision.auto_fork_hunt ? 'emitted' : 'skipped',
+      audit_ok: auditResult.ok,
+    });
+  }
+
   return Response.json({
     ok: true,
     persona: 'changelog-watcher',
@@ -86,6 +142,8 @@ export async function runChangelog(env: Env, _request: Request, _ctx: ExecutionC
     new_entries,
     leads_emitted: leads.length,
     leads,
+    triage_results,
+    triage_errors,
     wall_ms: Date.now() - startMs,
     errors
   });

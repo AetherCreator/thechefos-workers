@@ -17,4 +17,8 @@ export interface Env {
   BRAVE_SEARCH_API_KEY: string;
   GITHUB_TOKEN: string;
   CHANGELOG_SEEN: KVNamespace;
+  // C4 additions
+  MASTRO_BOT_TOKEN?: string;   // Telegram bot token for security_advisory immediate pings
+  TYLER_CHAT_ID?: string;      // Telegram chat ID for Tyler direct messages
+  DAILY_DIGEST_KV?: KVNamespace; // KV for daily_digest_queue (no drain in v1)
 }
