@@ -16,8 +16,8 @@ BRAIN_WRITE_BASE_URL = "https://thechefos-brain-write.tveg-baking.workers.dev"
 
 [[kv_namespaces]]
 binding = "VOYAGE_STATE"
-id = "00000000000000000000000000000001"
+id = "92a758bba1da4de19c655af8ab87ac90"
 
 [[kv_namespaces]]
 binding = "VOYAGE_IDEMPOTENCY"
-id = "00000000000000000000000000000002"
+id = "7227201294bf47f6b6e744189328a9c0"
