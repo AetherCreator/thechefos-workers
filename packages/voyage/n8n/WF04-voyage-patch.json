@@ -1,0 +1,789 @@
+[
+  {
+    "updatedAt": "2026-05-24T15:04:35.230Z",
+    "createdAt": "2026-05-02T00:41:08.910Z",
+    "id": "uCtREDPI7homnJpF",
+    "name": "04 — Telegram Command Router",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "telegram-router",
+          "responseMode": "responseNode",
+          "responseData": "firstEntryJson",
+          "authentication": "headerAuth"
+        },
+        "id": "node-wh-tg",
+        "name": "Telegram Router Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          200,
+          300
+        ],
+        "webhookId": "telegram-router",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "r8jqHv4VctHbgvJY",
+            "name": "Maestro Webhook Secret"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "// Parse Telegram message forwarded via the Maestro webhook\n// Updated 2026-05-09: support THDD group + bot-to-bot @-mentions (path C smoke).\nconst ALLOWED_CHAT_IDS = ['6091970994', '-5276079329']; // Tyler DM, THDD group\nconst ALLOWED_SENDERS = [6091970994, 8767113351]; // Tyler, Aether_MapMaker_bot\n\nconst body = $input.first().json.body || $input.first().json;\nconst message = body.message || body;\nconst text = (message.text || '').trim();\n\n// Strict chat_id extraction. NO fallback — a missing chat_id is a refusal,\n// not an implicit \"trust Tyler\". Removes a sub-bug from the prior version.\nconst raw_chat_id = message.chat?.id ?? body.chat_id;\nif (raw_chat_id == null) {\n  throw new Error('No chat_id in payload — refusing to process');\n}\nconst chat_id = String(raw_chat_id);\n\n// Tier 0 allowlist gate (OPS-023). Combined with the X-Telegram-Bot-Api-\n// Secret-Token enforcement on the webhook node (OPS-022), the only path\n// to this code is \"Telegram-genuine + chat in allowlist\".\nif (!ALLOWED_CHAT_IDS.includes(chat_id)) {\n  throw new Error('Unauthorized chat_id: ' + chat_id);\n}\n\n// Group-context sender gate (added 2026-05-09 for path-C smoke). In private\n// DMs chat_id == user_id so the chat allowlist is sufficient. In groups\n// (negative chat_id), additionally verify the sender is in {Tyler, Mapmaker}\n// so random group members can't /build.\nconst sender_id = message.from?.id;\nif (chat_id.startsWith('-') && !ALLOWED_SENDERS.includes(sender_id)) {\n  throw new Error('Unauthorized sender in group chat: ' + sender_id);\n}\n\nif (!text.startsWith('/')) return [{ json: { cmd: 'unknown', args: [], chat_id, text } }];\n\nconst parts = text.split(/\\s+/);\n// Strip @bot mention so /build@Mastro_ClaudeBot matches /build downstream\n// (added 2026-05-09 — pre-fix the Switch node's strict equals failed on @-mentions).\nconst cmd = parts[0].toLowerCase().replace(/@\\w+$/, '');\nconst args = parts.slice(1);\n\n// the-bridge C4 (2026-05-06): expose arg1 + clue (numeric, strips 'clue-' prefix)\n// so /build <hunt> clue-<n> can dispatch to hunter-exec.py with --clue <int>.\nconst arg1 = args[1] || '';\nconst clue = (arg1.replace(/^clue-/i, '') || '1');  // default to clue 1 when omitted (the-undertaker C3 fix 2026-05-10)\n\nreturn [{ json: { cmd, args, arg0: args[0] || '', arg1, clue, chat_id, user_id: sender_id, username: message.from?.username, text } }];\n"
+        },
+        "id": "node-parse-cmd",
+        "name": "Parse Command",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          420,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "/build",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "build"
+              },
+              {
+                "conditions": {
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "/status",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "status"
+              },
+              {
+                "conditions": {
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "/kill",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "kill"
+              },
+              {
+                "conditions": {
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "/babysit",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "babysit"
+              },
+              {
+                "conditions": {
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "/hunts",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "hunts"
+              },
+              {
+                "conditions": {
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "/quests",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "quests"
+              },
+              {
+                "conditions": {
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "/voyage",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "voyage"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": false,
+                    "leftValue": "",
+                    "typeValidation": "loose"
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.cmd }}",
+                      "rightValue": "^/(build|status|kill|babysit|hunts|quests|voyage)$",
+                      "operator": {
+                        "type": "string",
+                        "operation": "notRegex"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "fallback"
+              }
+            ]
+          }
+        },
+        "id": "node-route",
+        "name": "Route Command",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3,
+        "position": [
+          640,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://n8n.thechefos.app/webhook/shell",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-shell-key",
+                "value": "SuperDuperClaude"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"command\": \"nohup timeout --kill-after=10s 1500 bash /opt/scripts/auto-exec.sh --hunt {{ $json.arg0 }} --clue {{ $json.clue }} >> /var/log/auto-exec.log 2>&1 & echo dispatched_via_auto_exec hunt={{ $json.arg0 }} clue={{ $json.clue }}\"}",
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        },
+        "id": "node-build",
+        "name": "POST auto-exec.sh",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          900,
+          100
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://n8n.thechefos.app/webhook/shell",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-shell-key",
+                "value": "SuperDuperClaude"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"command\": \"python3 /opt/scripts/conductor-resolve.py '{{ $json.arg0 }}' 2>&1 | tail -20\"}"
+        },
+        "id": "node-status",
+        "name": "Status Shell",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          900,
+          250
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://n8n.thechefos.app/webhook/shell",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-shell-key",
+                "value": "SuperDuperClaude"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"command\": \"bash /opt/scripts/babysit-stop.sh '{{ $json.arg0 }}'\"}"
+        },
+        "id": "node-kill",
+        "name": "Kill Shell",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          900,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://n8n.thechefos.app/webhook/shell",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-shell-key",
+                "value": "SuperDuperClaude"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"command\": \"bash /opt/scripts/babysit-start.sh '{{ $json.arg0 }}'\"}"
+        },
+        "id": "node-babysit",
+        "name": "Babysit Shell",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          900,
+          550
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://n8n.thechefos.app/webhook/shell",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-shell-key",
+                "value": "SuperDuperClaude"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "{\"command\": \"ls /opt/context/ 2>/dev/null | sed 's/.md$//' | sort\"}"
+        },
+        "id": "node-hunts",
+        "name": "List Hunts Shell",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          900,
+          700
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// Build reply text from previous node output\nconst prev = $input.first().json;\nconst stdout = prev.stdout || prev.sessions_started || JSON.stringify(prev);\nconst cmd = $('Parse Command').first().json.cmd || '';\nconst arg0 = $('Parse Command').first().json.arg0 || '';\nconst arg1 = $('Parse Command').first().json.arg1 || '';\n\nlet reply;\nswitch (cmd) {\n  case '/build':\n    reply = `\\u{1F309} Building ${arg0}${arg1 ? ' ' + arg1 : ''}\\u2026 hunter-exec firing \\u2014 proof.txt + COMPLETE.md committing as Hunter, ETA <2 min.`;\n    break;\n  case '/status':\n    reply = `\\u{1F4CA} ${arg0} status:\\n${stdout.trim().slice(0, 600)}`;\n    break;\n  case '/kill':\n    reply = `\\u{1F6D1} Killed session: ${arg0}`;\n    break;\n  case '/babysit':\n    reply = `\\u{1F476} Babysitter started for: ${arg0}`;\n    break;\n  case '/hunts':\n    reply = `\\u{1F5C2} Active contexts:\\n${stdout.trim()}`;\n    break;\n  case '/quests':\n    reply = ($input.first().json.markdown) || (prev.markdown) || (prev.body && prev.body.markdown) || '_no markdown returned_';\n    break;\n  default:\n    if (cmd === '/start' || cmd === '/help') {\n      reply = `\\u{1F3BC} Maestro online.\\n\\n` +\n              `Commands:\\n` +\n              `/build <hunt> \\u2014 start a hunt\\n` +\n              `/status <hunt> \\u2014 check status\\n` +\n              `/kill <session> \\u2014 stop a session\\n` +\n              `/babysit <session> \\u2014 restart babysitter\\n` +\n              `/hunts \\u2014 list active contexts`;\n    } else if (cmd === 'unknown') {\n      reply = `\\u{1F3BC} Maestro listening. Send a command:\\n` +\n              `/build /status /kill /babysit /hunts\\n` +\n              `(or /help for details)`;\n    } else {\n      reply = `\\u2753 Unknown command: ${cmd}\\n` +\n              `Try /help for the full list.`;\n    }\n}\n\nreturn [{ json: { reply, chat_id: $('Parse Command').first().json.chat_id } }];"
+        },
+        "id": "node-format-reply",
+        "name": "Format Reply",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1140,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.telegram.org/bot8573641919:AAFRJ9gH5KFgq3J-WpJZaMzdtgeF2upt0Kg/sendMessage",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"chat_id\": {{ JSON.stringify($json.chat_id) }}, \"text\": {{ JSON.stringify($json.reply) }}}"
+        },
+        "id": "node-send-tg",
+        "name": "Send Telegram Reply",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1360,
+          400
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "{\"ok\": true}"
+        },
+        "id": "node-respond",
+        "name": "Respond OK",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [
+          1580,
+          400
+        ]
+      },
+      {
+        "id": "qm-preflight-node",
+        "name": "QM Preflight",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          860,
+          300
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://n8n.thechefos.app/webhook/shell",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-shell-key",
+                "value": "SuperDuperClaude"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\"command\": \"python3 /opt/scripts/quartermaster-preflight.py --hunt {{ $json.arg0 }} --clue {{ $json.clue }} 2>/dev/null || true\"}",
+          "options": {
+            "timeout": 30000,
+            "response": {
+              "response": {
+                "neverError": true
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "parse-qm-result-node",
+        "name": "Parse QM Result",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1080,
+          300
+        ],
+        "parameters": {
+          "jsCode": "// Parse Quartermaster preflight stdout\n// Shell Bridge response shape: { stdout: \"...\", stderr: \"...\", exit_code: N }\n// QM stdout is the JSON-encoded result object.\nconst prev = $input.first().json;\nconst parse = $('Parse Command').first().json;\n\nlet qm = null;\nlet qm_parse_error = null;\nconst raw = (prev.stdout || prev.body?.stdout || '').trim();\ntry {\n  qm = raw ? JSON.parse(raw) : null;\n} catch (e) {\n  qm_parse_error = String(e).slice(0, 200);\n}\n\n// Fail-safe: if QM didn't run cleanly, treat as NOT ready with a synthetic gap.\n// Substrate-honesty: don't silently let dispatch proceed when the gate itself failed.\nif (qm == null) {\n  qm = {\n    version: 'quartermaster-v1.1',\n    hunt: parse.arg0,\n    clue: parse.clue,\n    ready: false,\n    gaps: [{\n      type: 'preflight_gate_unreachable',\n      severity: 'block',\n      error: qm_parse_error || 'empty stdout from Shell Bridge',\n      raw_preview: raw.slice(0, 200)\n    }],\n    blocking_gap_count: 1,\n    warn_gap_count: 0,\n  };\n}\n\nreturn [{\n  json: {\n    qm,\n    qm_ready: qm.ready === true,\n    cmd: parse.cmd,\n    arg0: parse.arg0,\n    arg1: parse.arg1,\n    clue: parse.clue,\n    chat_id: parse.chat_id,\n    args: parse.args,\n    text: parse.text,\n  }\n}];\n"
+        }
+      },
+      {
+        "id": "qm-gate-node",
+        "name": "QM Gate",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          1300,
+          300
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose"
+            },
+            "conditions": [
+              {
+                "leftValue": "={{ $json.qm_ready }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          }
+        }
+      },
+      {
+        "id": "format-qm-abort-node",
+        "name": "Format QM Abort",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1300,
+          500
+        ],
+        "parameters": {
+          "jsCode": "// Format Quartermaster abort reply\n// Fires when qm.ready === false. Builds a tightly-scoped Telegram reply\n// listing blocking gaps so Tyler can fix them before re-firing /build.\nconst j = $input.first().json;\nconst qm = j.qm || {};\nconst gaps = qm.gaps || [];\nconst blocking = gaps.filter(g => g.severity === 'block');\nconst warns = gaps.filter(g => g.severity === 'warn');\n\nconst lines = [];\nlines.push(`🚫 Quartermaster blocks /build ${j.arg0 || '?'} clue-${j.clue || '?'}`);\nlines.push(`Source: ${qm.prompt_source || '(PROMPT not found)'}`);\nlines.push(`Blocking: ${blocking.length} · Warnings: ${warns.length}`);\nlines.push('');\nlines.push('Blocking gaps:');\nif (blocking.length === 0) {\n  lines.push('  (none — but ready=false, possible gate bug)');\n} else {\n  for (const g of blocking.slice(0, 8)) {\n    const detail = g.path || g.repo || g.error || g.status || '';\n    lines.push(`  • ${g.type}${detail ? ' — ' + String(detail).slice(0, 120) : ''}`);\n  }\n  if (blocking.length > 8) lines.push(`  …and ${blocking.length - 8} more`);\n}\nif (warns.length) {\n  lines.push('');\n  lines.push(`Warnings (non-blocking): ${warns.map(w => w.type).join(', ').slice(0, 200)}`);\n}\nlines.push('');\nlines.push('Fix the blocking gaps and re-fire /build.');\n\nreturn [{\n  json: {\n    reply: lines.join('\\n'),\n    chat_id: j.chat_id,\n  }\n}];\n"
+        }
+      },
+      {
+        "id": "node-quests-worker-1",
+        "name": "Quests Worker",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          950,
+          900
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://thechefos-quest-log.tveg-baking.workers.dev/api/telegram-quests",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"chat_id\": {{ $json.chat_id }},\n  \"user_id\": {{ $json.user_id }},\n  \"username\": \"{{ $json.username || '' }}\"\n}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "x-quest-log-key",
+                "value": "002565bf7fb97ccb37c1b034f22ce48f4ba42808daf9a05904b992e9c8c451d6"
+              },
+              {
+                "name": "content-type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 8000
+          }
+        }
+      },
+      {
+        "id": "voyage-main-node",
+        "name": "Voyage Main",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          950,
+          1080
+        ],
+        "parameters": {
+          "jsCode": "// C4 voyage command handler\n// brain-write /api/brain/read is absent — using GitHub raw fallback\nconst parsed = $('Parse Command').first().json;\nconst chat_id = parsed.chat_id;\nconst hunt_slug = (parsed.args || [])[0] || '';\n\nif (!hunt_slug) {\n  return [{ json: { reply: 'Usage: /voyage <hunt-slug>', chat_id } }];\n}\n\nconst charterUrl =\n  `https://raw.githubusercontent.com/AetherCreator/SuperClaude/main/hunts/${hunt_slug}/CHARTER.md`;\n\nlet charterText;\ntry {\n  const charterResp = await fetch(charterUrl);\n  if (!charterResp.ok) {\n    const reply = `❌ No charter at hunts/${hunt_slug}/CHARTER.md (HTTP ${charterResp.status})`;\n    return [{ json: { reply, chat_id } }];\n  }\n  charterText = await charterResp.text();\n} catch (e) {\n  return [{ json: { reply: `❌ Charter fetch error: ${e.message}`, chat_id } }];\n}\n\n// Extract §1 Treasure section\nconst m = charterText.match(/##\\s*1\\.\\s*The Treasure[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s*2\\.|$)/m);\nconst hunt_intent = (m ? m[1].trim() : charterText.trim()).slice(0, 4000);\n\n// POST to voyage worker\nconst now = new Date();\nconst expectedBy = new Date(now.getTime() + 86400000).toISOString();\nconst voyageWorkerUrl = $env.VOYAGE_WORKER_BASE_URL || 'https://voyage.tveg-baking.workers.dev';\n\nlet voyageResult;\ntry {\n  const voyageResp = await fetch(`${voyageWorkerUrl}/voyage/start`, {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({\n      hunt: hunt_slug,\n      hunt_intent,\n      scope_constraints: 'via /voyage Telegram command',\n      expected_completion_by: expectedBy,\n    }),\n  });\n  if (!voyageResp.ok) {\n    const errBody = await voyageResp.text();\n    const reply = `❌ Voyage start failed (HTTP ${voyageResp.status}): ${errBody.slice(0, 200)}`;\n    return [{ json: { reply, chat_id } }];\n  }\n  voyageResult = await voyageResp.json();\n} catch (e) {\n  return [{ json: { reply: `❌ Voyage POST error: ${e.message}`, chat_id } }];\n}\n\nconst voyage_id = voyageResult.voyage_id;\nconst reply = [\n  '🚀 Voyage started',\n  `• id: ${voyage_id}`,\n  `• hunt: ${hunt_slug}`,\n  `• role: captain`,\n  `• state: ${voyageWorkerUrl}/voyage/${voyage_id}`,\n].join('\\n').slice(0, 4096);\n\nreturn [{ json: { reply, chat_id } }];\n"
+        }
+      }
+    ],
+    "connections": {
+      "Telegram Router Webhook": {
+        "main": [
+          [
+            {
+              "node": "Parse Command",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Command": {
+        "main": [
+          [
+            {
+              "node": "Route Command",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Command": {
+        "main": [
+          [
+            {
+              "node": "QM Preflight",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Status Shell",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Kill Shell",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Babysit Shell",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "List Hunts Shell",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Quests Worker",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Voyage Main",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Status Shell": {
+        "main": [
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Kill Shell": {
+        "main": [
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Babysit Shell": {
+        "main": [
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "List Hunts Shell": {
+        "main": [
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Reply": {
+        "main": [
+          [
+            {
+              "node": "Send Telegram Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send Telegram Reply": {
+        "main": [
+          [
+            {
+              "node": "Respond OK",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "POST auto-exec.sh": {
+        "main": [
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "QM Preflight": {
+        "main": [
+          [
+            {
+              "node": "Parse QM Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse QM Result": {
+        "main": [
+          [
+            {
+              "node": "QM Gate",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "QM Gate": {
+        "main": [
+          [
+            {
+              "node": "POST auto-exec.sh",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Format QM Abort",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format QM Abort": {
+        "main": [
+          [
+            {
+              "node": "Send Telegram Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Quests Worker": {
+        "main": [
+          [
+            {
+              "node": "Format Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Voyage Main": {
+        "main": [
+          [
+            {
+              "node": "Send Telegram Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "staticData": null,
+    "meta": null,
+    "pinData": null,
+    "versionId": "6649c600-d8c6-4525-8658-76371c231cd9",
+    "activeVersionId": "6649c600-d8c6-4525-8658-76371c231cd9",
+    "versionCounter": 75,
+    "triggerCount": 1,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-05-02T00:41:08.911Z",
+        "createdAt": "2026-05-02T00:41:08.911Z",
+        "role": "workflow:owner",
+        "workflowId": "uCtREDPI7homnJpF",
+        "projectId": "qBZ2vN1aWKeUrOhn",
+        "project": {
+          "updatedAt": "2026-04-28T00:21:34.943Z",
+          "createdAt": "2026-04-28T00:16:13.338Z",
+          "id": "qBZ2vN1aWKeUrOhn",
+          "name": "Tyler Vegetabile <tveg.baking@gmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "creatorId": "aee911c1-a5a5-42e2-b159-115ded4d0708"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": null,
+      "description": null
+    }
+  }
+]
