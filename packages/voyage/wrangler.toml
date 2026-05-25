@@ -1,0 +1,12 @@
+name = "voyage"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "VOYAGE_STATE"
+id = "00000000000000000000000000000001"
+
+[[kv_namespaces]]
+binding = "VOYAGE_IDEMPOTENCY"
+id = "00000000000000000000000000000002"
