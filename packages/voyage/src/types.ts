@@ -28,4 +28,6 @@ export interface VoyageRecord {
 export interface Env {
   VOYAGE_STATE: KVNamespace;
   VOYAGE_IDEMPOTENCY: KVNamespace;
+  BRAIN_WRITE_BASE_URL: string;
+  BRAIN_WRITE_API_SECRET: string;
 }

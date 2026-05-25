@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+BRAIN_WRITE_BASE_URL = "https://thechefos-brain-write.tveg-baking.workers.dev"
+# Secrets bound in C5 via wrangler secret put: BRAIN_WRITE_API_SECRET
+
 [[kv_namespaces]]
 binding = "VOYAGE_STATE"
 id = "00000000000000000000000000000001"
