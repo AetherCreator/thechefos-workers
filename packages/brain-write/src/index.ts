@@ -7,6 +7,7 @@ import { buildAuditEntry, commitAuditEntry } from './complete-validator/audit'
 import { parse as parseYaml } from 'yaml'
 import { pingShipsDoctor } from './complete-validator/ping'
 import { handleOpsFile } from './ops-file'
+import { crewXpRoutes } from './crew-xp/routes'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -147,7 +148,7 @@ app.post('/api/webhook/github', async (c) => {
     for (const file of allFiles) {
       if (file.endsWith('COMPLETE.md')) {
         completeMdPaths.push({
-          path: file,
+          path: string,
           commitSha: commit.id,
           commitMessage: commit.message || '',
         })
@@ -191,7 +192,7 @@ app.post('/api/webhook/github', async (c) => {
     )
     if (!fileText.ok) {
       validatorResults.push({
-        file: detected.path,
+        file: string,
         verdict: 'fetch_error',
         blocked: false,
         dry_run: dryRun,
@@ -229,7 +230,7 @@ app.post('/api/webhook/github', async (c) => {
     const auditCommit = await commitAuditEntry(entry, c.env)
     const blocked = entry.verdict.startsWith('blocked_')
     const vr: (typeof validatorResults)[number] = {
-      file: detected.path,
+      file: string,
       verdict: entry.verdict,
       blocked,
       dry_run: dryRun,
@@ -269,20 +270,20 @@ app.post('/api/webhook/github', async (c) => {
   for (const detected of completeMdPaths) {
     if (blockedFiles.has(detected.path)) {
       opsResults.push({
-        path: detected.path,
+        path: string,
         result: { ok: false, error: 'blocked_by_complete_validator' },
       })
       continue
     }
     const huntInfo = extractHuntInfo(detected.path)
     if (!huntInfo) {
-      opsResults.push({ path: detected.path, result: { ok: false, error: 'not_hunt_path' } })
+      opsResults.push({ path: string, result: { ok: false, error: 'not_hunt_path' } })
       continue
     }
     const item = parsedBoard ? findActiveOpsItemForHunt(parsedBoard, huntInfo.hunt) : null
     if (!item) {
       opsResults.push({
-        path: detected.path,
+        path: string,
         hunt: huntInfo.hunt,
         result: { ok: false, error: 'no_matching_active_ops_row' },
       })
@@ -303,7 +304,7 @@ app.post('/api/webhook/github', async (c) => {
       },
     })
     opsResults.push({
-      path: detected.path,
+      path: string,
       hunt: huntInfo.hunt,
       ops_id: item.id,
       result: guarded.result,
@@ -414,16 +415,16 @@ app.post('/api/brain/push', async (c) => {
     } else {
       const createRes = await fetch(
         `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${body.path}`,
-        {
-          method: 'PUT',
-          headers: { ...headers, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: body.message,
-            content: contentBase64,
-            committer: COMMITTER,
-          }),
-        }
-      )
+          {
+            method: 'PUT',
+            headers: { ...headers, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: body.message,
+              content: contentBase64,
+              committer: COMMITTER,
+            }),
+          }
+        )
       if (!createRes.ok) {
         // OPS-058e fix (2026-05-14): pass through GitHub status + diagnostic fields
         const errText = await createRes.text()
@@ -533,16 +534,16 @@ app.post('/api/auto-actions/write', async (c) => {
     const existing = await getFileContent(path, headers)
     const putRes = await fetch(
       `${GITHUB_API}/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`,
-      {
-        method: 'PUT',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `auto-action: ${body.action} ${body.target} (${audit_id})`,
-          content: contentBase64,
-          ...(existing ? { sha: existing.sha } : {}),
-          committer: COMMITTER,
-        }),
-      }
+        {
+          method: 'PUT',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: `auto-action: ${body.action} ${body.target} (${audit_id})`,
+            content: contentBase64,
+            ...(existing ? { sha: existing.sha } : {}),
+            committer: COMMITTER,
+          }),
+        }
     )
     if (!putRes.ok) {
       const errText = await putRes.text()
@@ -953,7 +954,7 @@ app.post('/api/ops/complete', async (c) => {
     const result = await completeOpsItem(c.env, id, summary, evidence_url)
     return c.json(
       result,
-      result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500))
+      result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500)
     )
   }
 
@@ -966,8 +967,8 @@ app.post('/api/ops/complete', async (c) => {
   const r = guarded.result
   return c.json(
     { ...r, guard_layer: guarded.guard_layer },
-    r.ok ? 200 : (r.error === 'not_found' ? 404 : (r.error === 'not_in_active' ? 409 : r.error === 'blocked_verifier' ? 409 : 500))
-  )
+    r.ok ? 200 : (r.error === 'not_found' ? 404 : (r.error === 'not_in_active' ? 409 : r.error === 'blocked_verifier' ? 409 : 500)
+  })
 })
 
 // POST /api/ops/reopen — body { id, reason? }
@@ -984,7 +985,7 @@ app.post('/api/ops/reopen', async (c) => {
   return c.json(
     result,
     result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_completed' ? 409 : 500))
-  )
+  })
 })
 
 async function reopenOpsItem(
@@ -1058,7 +1059,7 @@ app.post('/api/ops/escalate', async (c) => {
   let body: { id?: string; reason?: string; severity?: 'warn' | 'critical' }
   try { body = await c.req.json() } catch { return c.json({ error: 'bad_json' }, 400) }
   const { id, reason, severity = 'warn' } = body
-  if (!id || !reason) return c.json({ error: 'missing_fields', hint: '{id, reason, severity?}' }, 400)
+  if (!id) return c.json({ error: 'missing_fields', hint: '{id, reason, severity?}' }, 400)
   if (reason.length < 4) return c.json({ error: 'reason_too_short' }, 400)
 
   const headers = githubHeaders(c.env.GITHUB_TOKEN)
@@ -1293,7 +1294,7 @@ app.get('/api/playtester/run/:app/:run_id', async (c) => {
   if (!PLAYTESTER_APPS.has(appName)) {
     return c.json({ error: 'invalid_app' }, 400)
   }
-  const kvKey = `playtester:run:${appName}:${run_id}`
+  const kvKey = `playtester:run:${appName}:${body.run_id}`
   const raw = await c.env.SESSION_KV.get(kvKey)
   if (!raw) return c.json({ error: 'not_found', kv_key: kvKey }, 404)
   try {
@@ -1302,6 +1303,9 @@ app.get('/api/playtester/run/:app/:run_id', async (c) => {
     return c.json({ error: 'corrupt_kv_payload', kv_key: kvKey }, 500)
   }
 })
+
+// ─── P5 Pa C1: Crew XP routes ────────────────────────────────────
+app.route('/api/crew', crewXpRoutes)
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', version: '0.7.0', features: ['brain-push', 'session-state', 'github-webhook', 'ops-board', 'playtester'] }))
