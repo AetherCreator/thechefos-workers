@@ -8,6 +8,7 @@ import { parse as parseYaml } from 'yaml'
 import { pingShipsDoctor } from './complete-validator/ping'
 import { handleOpsFile } from './ops-file'
 import { crewXpRoutes } from './crew-xp/routes'
+import { spiritRoutes } from './spirit/routes'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -1306,6 +1307,7 @@ app.get('/api/playtester/run/:app/:run_id', async (c) => {
 
 // ─── P5 Pa C1: Crew XP routes ────────────────────────────────────
 app.route('/api/crew', crewXpRoutes)
+app.route('/api/spirit', spiritRoutes)
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', version: '0.7.0', features: ['brain-push', 'session-state', 'github-webhook', 'ops-board', 'playtester'] }))
