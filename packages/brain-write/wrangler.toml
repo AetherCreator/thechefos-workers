@@ -22,8 +22,8 @@ id = "fee11c9392d141d49eb8efa7d495d7be"
 # DO NOT deploy with these placeholder values — wrangler dry-run is the safe check.
 [[kv_namespaces]]
 binding = "CREW_XP_KV"
-id = "PLACEHOLDER_CREW_XP_KV_ID"
+id = "55a1eebe922a46aebca6ddd9cd815bdf"
 
 [[kv_namespaces]]
 binding = "CREW_XP_DEDUP_KV"
-id = "PLACEHOLDER_CREW_XP_DEDUP_KV_ID"
+id = "d5cedded1ddb4605b3f7d97a5b87158d"
