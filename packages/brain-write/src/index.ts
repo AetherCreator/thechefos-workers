@@ -148,7 +148,7 @@ app.post('/api/webhook/github', async (c) => {
     for (const file of allFiles) {
       if (file.endsWith('COMPLETE.md')) {
         completeMdPaths.push({
-          path: string,
+          path: file,
           commitSha: commit.id,
           commitMessage: commit.message || '',
         })
@@ -192,7 +192,7 @@ app.post('/api/webhook/github', async (c) => {
     )
     if (!fileText.ok) {
       validatorResults.push({
-        file: string,
+        file: detected.path,
         verdict: 'fetch_error',
         blocked: false,
         dry_run: dryRun,
@@ -230,7 +230,7 @@ app.post('/api/webhook/github', async (c) => {
     const auditCommit = await commitAuditEntry(entry, c.env)
     const blocked = entry.verdict.startsWith('blocked_')
     const vr: (typeof validatorResults)[number] = {
-      file: string,
+      file: detected.path,
       verdict: entry.verdict,
       blocked,
       dry_run: dryRun,
@@ -270,20 +270,20 @@ app.post('/api/webhook/github', async (c) => {
   for (const detected of completeMdPaths) {
     if (blockedFiles.has(detected.path)) {
       opsResults.push({
-        path: string,
+        path: detected.path,
         result: { ok: false, error: 'blocked_by_complete_validator' },
       })
       continue
     }
     const huntInfo = extractHuntInfo(detected.path)
     if (!huntInfo) {
-      opsResults.push({ path: string, result: { ok: false, error: 'not_hunt_path' } })
+      opsResults.push({ path: detected.path, result: { ok: false, error: 'not_hunt_path' } })
       continue
     }
     const item = parsedBoard ? findActiveOpsItemForHunt(parsedBoard, huntInfo.hunt) : null
     if (!item) {
       opsResults.push({
-        path: string,
+        path: detected.path,
         hunt: huntInfo.hunt,
         result: { ok: false, error: 'no_matching_active_ops_row' },
       })
@@ -304,7 +304,7 @@ app.post('/api/webhook/github', async (c) => {
       },
     })
     opsResults.push({
-      path: string,
+      path: detected.path,
       hunt: huntInfo.hunt,
       ops_id: item.id,
       result: guarded.result,
