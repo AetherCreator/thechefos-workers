@@ -1,0 +1,80 @@
+{
+  "name": "04 — Telegram Command Router (Pa.C3 + /crew)",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/crew",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "leftValue": "={{ $json.message.chat.id }}",
+              "rightValue": 6091970994,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "p5-pa-crew-if",
+      "name": "P5: /crew command + Tyler only",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://thechefos-brain-write.tveg-baking.workers.dev/api/crew/xp-read",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-brain-write-secret", "value": "={{ $vars.BRAIN_WRITE_API_SECRET }}" }
+          ]
+        },
+        "options": { "timeout": 5000 }
+      },
+      "id": "p5-pa-crew-http",
+      "name": "P5: GET crew xp-read",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const roles = $input.first().json.roles;\nconst order = ['captain', 'mapmaker', 'quartermaster', 'hunter', 'ships-doctor', 'carpenter', 'council', 'librarian'];\nconst labels = { 'captain': 'Captain', 'mapmaker': 'MapMaker', 'quartermaster': 'Quartermaster', 'hunter': 'Hunter', 'ships-doctor': \"Ship's Doctor\", 'carpenter': 'Carpenter', 'council': 'Council', 'librarian': 'Librarian' };\nconst now = new Date().toISOString().slice(0, 10);\nconst lines = ['👥 *Crew Levels* — ' + now, '', '```'];\nlines.push('Role          | Lv | XP  | Next');\nlines.push('--------------|----|-----|-----');\nfor (const role of order) {\n  const r = roles[role];\n  if (!r || !r.deployed) { lines.push(labels[role].padEnd(13) + ' | —  | (not deployed)'); continue; }\n  const nextThreshold = r.level >= 5 ? '—' : String(r.thresholds[r.level - 1] - r.xp);\n  lines.push(labels[role].padEnd(13) + ' | ' + String(r.level).padStart(2) + ' | ' + String(r.xp).padStart(3) + ' | ' + nextThreshold.padStart(4));\n}\nlines.push('```');\nreturn [{ json: { text: lines.join('\\n'), chat_id: $('Telegram Trigger').first().json.message.chat.id } }];"
+      },
+      "id": "p5-pa-crew-format",
+      "name": "P5: Markdown Formatter (table)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "p5-pa-crew-send",
+      "name": "P5: Send crew levels",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": { "main": [[ { "node": "P5: /crew command + Tyler only", "type": "main", "index": 0 } ]] },
+    "P5: /crew command + Tyler only": { "main": [[ { "node": "P5: GET crew xp-read", "type": "main", "index": 0 } ]] },
+    "P5: GET crew xp-read": { "main": [[ { "node": "P5: Markdown Formatter (table)", "type": "main", "index": 0 } ]] },
+    "P5: Markdown Formatter (table)": { "main": [[ { "node": "P5: Send crew levels", "type": "main", "index": 0 } ]] }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "meta": { "templateCredsSetupCompleted": true }
+}
