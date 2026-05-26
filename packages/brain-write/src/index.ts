@@ -954,7 +954,7 @@ app.post('/api/ops/complete', async (c) => {
     const result = await completeOpsItem(c.env, id, summary, evidence_url)
     return c.json(
       result,
-      result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500)
+      result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_active' ? 409 : 500))
     )
   }
 
@@ -967,8 +967,8 @@ app.post('/api/ops/complete', async (c) => {
   const r = guarded.result
   return c.json(
     { ...r, guard_layer: guarded.guard_layer },
-    r.ok ? 200 : (r.error === 'not_found' ? 404 : (r.error === 'not_in_active' ? 409 : r.error === 'blocked_verifier' ? 409 : 500)
-  })
+    r.ok ? 200 : (r.error === 'not_found' ? 404 : (r.error === 'not_in_active' ? 409 : r.error === 'blocked_verifier' ? 409 : 500))
+  )
 })
 
 // POST /api/ops/reopen — body { id, reason? }
@@ -985,7 +985,7 @@ app.post('/api/ops/reopen', async (c) => {
   return c.json(
     result,
     result.ok ? 200 : (result.error === 'not_found' ? 404 : (result.error === 'not_in_completed' ? 409 : 500))
-  })
+  )
 })
 
 async function reopenOpsItem(
