@@ -37,6 +37,7 @@ export interface AuditTrailEntry {
   file: string // e.g. "hunts/carpenter-foundation/clue-5/COMPLETE.md"
   push_sha: string // push.after
   push_repo: string // e.g. "AetherCreator/SuperClaude"
+  spirit_tier?: string // Pb.C2 Phase C — current spirit tier at audit time (soft-degrades to 'steady')
 }
 
 export interface AuditEnv {

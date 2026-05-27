@@ -9,6 +9,7 @@ import { pingShipsDoctor } from './complete-validator/ping'
 import { handleOpsFile } from './ops-file'
 import { crewXpRoutes } from './crew-xp/routes'
 import { spiritRoutes } from './spirit/routes'
+import { readSpiritTierForAudit } from './spirit/middleware-hook'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -228,6 +229,8 @@ app.post('/api/webhook/github', async (c) => {
       dryRun,
       claimedRunId,
     )
+    // Pb.C2 Phase C — attach spirit tier at audit time (soft-degrades to 'steady', never throws)
+    entry.spirit_tier = await readSpiritTierForAudit(c.env)
     const auditCommit = await commitAuditEntry(entry, c.env)
     const blocked = entry.verdict.startsWith('blocked_')
     const vr: (typeof validatorResults)[number] = {
