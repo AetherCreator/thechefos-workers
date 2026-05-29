@@ -459,7 +459,7 @@ app.post('/api/brain/push', async (c) => {
     // Pc C1 inline xp-touch hook: fire-and-forget on successful brain/ node write.
     // Must never block or fail the write response (try/catch swallow).
     if (body.path.startsWith('brain/') && c.env.SUPERCLAUDE_BRAIN) {
-      void touchXp({ SUPERCLAUDE_BRAIN: c.env.SUPERCLAUDE_BRAIN } as BrainXpEnv, body.path, 'write').catch(() => {})
+      c.executionCtx.waitUntil(touchXp({ SUPERCLAUDE_BRAIN: c.env.SUPERCLAUDE_BRAIN } as BrainXpEnv, body.path, 'write').catch(() => {}))
     }
     return c.json({ ok: true, sha: commitSha, path: body.path, updated: !!existingFile })
   } catch (err) {
