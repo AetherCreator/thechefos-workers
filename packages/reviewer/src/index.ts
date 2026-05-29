@@ -80,7 +80,7 @@ async function callKimi(systemPrompt: string, userPrompt: string, env: Env): Pro
         { role: "user", content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 4096   // gate JSON output is small (~500 tok); reasoning fills rest
+      max_tokens: 16384   // gate JSON output is small (~500 tok); reasoning fills rest
     });
     const text =
       (typeof result?.response === "string" && result.response) ||

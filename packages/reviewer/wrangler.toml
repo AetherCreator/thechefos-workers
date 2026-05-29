@@ -15,7 +15,7 @@ BRAIN_RAW_BASE = "https://raw.githubusercontent.com/AetherCreator/SuperClaude/ma
 BRAIN_GH_API_BASE = "https://api.github.com/repos/AetherCreator/SuperClaude/contents"
 BRAIN_WRITE_URL = "https://api.thechefos.app/api/brain/push"
 INTEL_LOG_URL = "https://api.thechefos.app/api/intel/log"
-PER_GATE_TIMEOUT_MS = "30000"
+PER_GATE_TIMEOUT_MS = "60000"
 TYLER_CHAT_ID = "6091970994"
 
 [ai]
