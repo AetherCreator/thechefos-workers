@@ -5,6 +5,7 @@ import { commitReflectionDigest } from "./adapters/github-commit";
 import { fileOpsRowViaGitHub, type SystemImprovementRow } from "./outputs/ops-filing";
 import { sendReflectionTelegram } from "./outputs/telegram";
 import { applySpiritDrift, computeDriftDelta, type SpiritDriftResult } from "./outputs/spirit-drift";
+import { queryXpHotCold, renderXpDigestSection } from "./digest/xp-section";
 import type { Env, InputVolumes } from "./types";
 import type { ComputedMetrics } from "./digest/schema";
 import { isSectionError } from "./digest/schema";
@@ -53,7 +54,30 @@ export async function runReflectionFlow(params: FlowParams): Promise<FlowResult>
 
   // Step 2: Write digest markdown
   const inputVolumes: InputVolumes = deriveInputVolumes(computed);
-  const digestMarkdown = writeReflectionMarkdown(week, generatedAt, workerVersion, inputVolumes, computed);
+  const baseDigest = writeReflectionMarkdown(week, generatedAt, workerVersion, inputVolumes, computed);
+
+  // Step P3: Brain XP hot/cold digest section (read-only, fire-and-forget touch for cited nodes)
+  let xpSection = "";
+  try {
+    const { hot, cold } = await queryXpHotCold(env.BRAIN_D1, 5, 5);
+    xpSection = renderXpDigestSection(hot, cold);
+
+    const cited = [...hot, ...cold].map((n) => n.path);
+    for (const path of cited) {
+      fetch(`${env.BRAIN_WRITE_BASE}/api/brain/xp-touch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-brain-write-secret": env.BRAIN_WRITE_API_SECRET,
+        },
+        body: JSON.stringify({ path, source: "reflection" }),
+      }).catch(() => undefined);
+    }
+  } catch (err) {
+    warnings.push(`xp-digest: ${String(err)}`);
+  }
+
+  const digestMarkdown = xpSection ? `${baseDigest}\n${xpSection}` : baseDigest;
 
   const result: FlowResult = {
     week,

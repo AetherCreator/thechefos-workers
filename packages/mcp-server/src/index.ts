@@ -3,7 +3,7 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { createEnrichedProxyCall, SKIP_ENRICHMENT, searchBrain, formatBrainContext } from "./enrich";
+import { createEnrichedProxyCall, SKIP_ENRICHMENT, searchBrain, formatBrainContext, fetchXpMap, sortByEffectiveXp, touchXpPreloadFireAndForget } from "./enrich";
 
 export interface Env {
   GITHUB_TOKEN: string;
@@ -268,7 +268,17 @@ export class TheChefOSMCP extends McpAgent<Env> {
         if (results.length === 0) {
           return { content: [{ type: "text" as const, text: "No relevant brain context found for this query." }] };
         }
-        return { content: [{ type: "text" as const, text: formatBrainContext(results) }] };
+
+        // Bias ordering: recent + high effective-XP first (C2 patch)
+        // Cold-start fallback: if xpMap empty, sortByEffectiveXp returns original order
+        const paths = results.map((r) => r.path);
+        const xpMap = await fetchXpMap(paths).catch(() => new Map<string, number>());
+        const sorted = sortByEffectiveXp(results, xpMap);
+
+        // Fire-and-forget — never blocks response, never throws
+        touchXpPreloadFireAndForget(paths);
+
+        return { content: [{ type: "text" as const, text: formatBrainContext(sorted) }] };
       }
     );
 

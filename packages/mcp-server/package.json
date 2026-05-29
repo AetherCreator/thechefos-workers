@@ -3,13 +3,18 @@
   "version": "0.2.0",
   "private": true,
   "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "dependencies": {
-    "agents": "^0.8.7",
     "@modelcontextprotocol/sdk": "^1.28.0",
+    "agents": "^0.8.7",
     "zod": "^4.0.0"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0",
-    "@cloudflare/workers-types": "^4.0.0"
+    "@cloudflare/workers-types": "^4.0.0",
+    "vitest": "^2.1.9",
+    "wrangler": "^4.0.0"
   }
 }

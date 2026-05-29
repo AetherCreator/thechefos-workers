@@ -10,6 +10,9 @@ import { handleOpsFile } from './ops-file'
 import { crewXpRoutes } from './crew-xp/routes'
 import { spiritRoutes } from './spirit/routes'
 import { readSpiritTierForAudit } from './spirit/middleware-hook'
+import { brainXpRoutes } from './brain-xp/routes'
+import { touchXp } from './brain-xp/index'
+import type { BrainXpEnv } from './brain-xp/index'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -38,6 +41,8 @@ export interface Env {
   CF_ACCOUNT_ID?: string // optional; enables D1 cross-source SHA verification
   // ops-file (locke-changelog-watcher C4)
   BRAIN_WRITE_API_SECRET?: string // auth key for POST /api/ops/file (X-Brain-Write-Key header)
+  // P5 Pc C1: brain-xp D1 (superclaude-brain DB)
+  SUPERCLAUDE_BRAIN?: D1Database
 }
 
 interface BrainPushPayload {
@@ -450,6 +455,11 @@ app.post('/api/brain/push', async (c) => {
     //    don't pollute the brain knowledge graph index with hunt scaffolds).
     if (body.path !== GRAPH_INDEX_PATH && body.path.startsWith('brain/')) {
       await appendToGraphIndex(body.path, body.message, headers)
+    }
+    // Pc C1 inline xp-touch hook: fire-and-forget on successful brain/ node write.
+    // Must never block or fail the write response (try/catch swallow).
+    if (body.path.startsWith('brain/') && c.env.SUPERCLAUDE_BRAIN) {
+      void touchXp({ SUPERCLAUDE_BRAIN: c.env.SUPERCLAUDE_BRAIN } as BrainXpEnv, body.path, 'write').catch(() => {})
     }
     return c.json({ ok: true, sha: commitSha, path: body.path, updated: !!existingFile })
   } catch (err) {
@@ -1311,6 +1321,8 @@ app.get('/api/playtester/run/:app/:run_id', async (c) => {
 // ─── P5 Pa C1: Crew XP routes ────────────────────────────────────
 app.route('/api/crew', crewXpRoutes)
 app.route('/api/spirit', spiritRoutes)
+// ─── P5 Pc C1: Brain XP routes ───────────────────────────────────
+app.route('/api/brain', brainXpRoutes)
 
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', version: '0.7.0', features: ['brain-push', 'session-state', 'github-webhook', 'ops-board', 'playtester'] }))
