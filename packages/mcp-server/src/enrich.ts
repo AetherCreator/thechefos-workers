@@ -215,6 +215,76 @@ export async function searchBrain(
   }
 }
 
+// ── Brain XP Sort (C2: preload bias by effective-XP) ─────────────────────
+
+const BRAIN_XP_BASE = "https://api.thechefos.app/api/brain";
+const BRAIN_XP_SECRET = "SuperDuperClaude"; // rotate via OPS-001
+const XP_FETCH_TIMEOUT_MS = 500; // never block preload
+
+/**
+ * Fetches effective-XP for each path via xp-read.
+ * Returns map of path → effective. Missing/errored paths yield 0.
+ * Hard 500ms timeout per fetch — swallows all errors.
+ */
+export async function fetchXpMap(paths: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (paths.length === 0) return map;
+
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), XP_FETCH_TIMEOUT_MS);
+        const res = await fetch(
+          `${BRAIN_XP_BASE}/xp-read?path=${encodeURIComponent(path)}`,
+          { headers: { "x-brain-write-secret": BRAIN_XP_SECRET }, signal: ctrl.signal },
+        );
+        clearTimeout(timer);
+        if (!res.ok) return;
+        const data = await res.json() as { effective?: number };
+        if (typeof data.effective === "number") map.set(path, data.effective);
+      } catch {
+        // cold-start or network error — leave path absent (falls back to score order)
+      }
+    }),
+  );
+
+  return map;
+}
+
+/**
+ * Sorts BrainContext results by effective-XP descending (high first).
+ * Falls through to original order when xpMap is empty (cold-start / all misses).
+ * Tiebreak: search score descending.
+ */
+export function sortByEffectiveXp(
+  results: BrainContext[],
+  xpMap: Map<string, number>,
+): BrainContext[] {
+  if (xpMap.size === 0) return results;
+  return [...results].sort((a, b) => {
+    const diff = (xpMap.get(b.path) ?? 0) - (xpMap.get(a.path) ?? 0);
+    return diff !== 0 ? diff : b.score - a.score;
+  });
+}
+
+/**
+ * Fire-and-forget xp-touch source:'preload_ref' for each surfaced path.
+ * Never awaited, never throws, never blocks preload response.
+ */
+export function touchXpPreloadFireAndForget(paths: string[]): void {
+  for (const path of paths) {
+    fetch(`${BRAIN_XP_BASE}/xp-touch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-brain-write-secret": BRAIN_XP_SECRET,
+      },
+      body: JSON.stringify({ path, source: "preload_ref" }),
+    }).catch(() => undefined);
+  }
+}
+
 // ── Enrichment Wrapper ────────────────────────────────────────────────────
 
 type McpToolResult = {
