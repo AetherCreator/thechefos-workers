@@ -43,6 +43,7 @@ app.post("/api/reflect-now", async (c) => {
   return c.json({
     ok: true,
     week: result.week,
+    spirit_drift: result.spirit_drift,
     generated_at: result.generated_at,
     worker_version: c.env.WORKER_VERSION ?? "0.1.0",
     input_volumes: result.input_volumes,
