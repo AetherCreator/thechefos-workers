@@ -151,20 +151,34 @@ function gate2Stripe(): {pass: null; skipped: string} {
   return { pass: null, skipped: "v1.0 deferred" };
 }
 
-async function gate3Mobile(pageHtml: string, env: Env): Promise<{pass: boolean; issues: string[]; severity: "none" | "minor" | "major" | "critical"}> {
-  const systemPrompt = "You are a mobile UX reviewer. Given the HTML of a page, identify any elements that would break on a 375px wide screen (iPhone SE). Look for: fixed widths >375px, horizontal scroll, text overflow, touch targets <44px, overlapping elements. Respond ONLY with valid JSON. No prose, no markdown fences.";
-  const userPrompt = "HTML (truncated to 4000 chars if longer): " + pageHtml.slice(0, 4000) + "\n\nReturn:\n{\n  \"mobile_ready\": true | false,\n  \"issues\": [\"issue1\", \"issue2\"],\n  \"severity\": \"none\" | \"minor\" | \"major\" | \"critical\"\n}";
-  try {
-    const parsed = await callKimi(systemPrompt, userPrompt, env);
-    const sev = ["none", "minor", "major", "critical"].includes(parsed.severity) ? parsed.severity : "none";
-    return {
-      pass: parsed.mobile_ready === true,
-      issues: Array.isArray(parsed.issues) ? parsed.issues.slice(0, 5).map((i: any) => String(i)) : [],
-      severity: sev
-    };
-  } catch (err: any) {
-    return { pass: false, issues: ["gate3 error: " + (err?.message ?? err)], severity: "critical" };
-  }
+async function gate3Mobile(pageHtml: string, _env: Env): Promise<{pass: boolean; issues: string[]; severity: "none" | "minor" | "major" | "critical"}> {
+  // Heuristic, no-LLM mobile-readiness check. K2.6 over-reasons on raw HTML
+  // (deterministic gate3 timeout, tripled by the retry loop); mobile breakage is
+  // mechanically detectable. Full tap-target/overlap detection needs rendering (known limit).
+  const html = pageHtml || "";
+  const issues: string[] = [];
+
+  const hasViewport = /<meta[^>]+name=["']viewport["'][^>]*>/i.test(html)
+    && /width\s*=\s*device-width/i.test(html);
+  if (!hasViewport) issues.push("No <meta name=viewport content=width=device-width> — page will not scale to mobile");
+
+  const fixed: number[] = [];
+  const wRe = /(?<![a-z-])width\s*[:=]\s*["']?(\d{3,5})\s*px/gi;
+  let wm: RegExpExecArray | null;
+  while ((wm = wRe.exec(html)) !== null) { const px = parseInt(wm[1], 10); if (px > 375) fixed.push(px); }
+  if (fixed.length) issues.push(`${fixed.length} fixed width(s) >375px (max ${Math.max(...fixed)}px) — horizontal scroll risk at 375px`);
+
+  let minWide = 0;
+  const mRe = /min-width\s*:\s*(\d{3,5})\s*px/gi;
+  let mm: RegExpExecArray | null;
+  while ((mm = mRe.exec(html)) !== null) { if (parseInt(mm[1], 10) > 375) minWide++; }
+  if (minWide) issues.push(`${minWide} min-width >375px rule(s) — layout cannot shrink to mobile`);
+
+  let severity: "none" | "minor" | "major" | "critical" = "none";
+  if (!hasViewport) severity = "critical";
+  else if (fixed.length || minWide) severity = "major";
+
+  return { pass: issues.length === 0, issues: issues.slice(0, 5), severity };
 }
 
 async function gate4Copy(pageText: string, env: Env): Promise<{pass: boolean; value_prop_clear: boolean; cta_present: boolean; issues: string[]}> {
