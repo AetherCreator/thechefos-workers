@@ -4,6 +4,7 @@ import { buildEmptyDigest } from "./digest/empty";
 import { commitReflectionDigest } from "./adapters/github-commit";
 import { fileOpsRowViaGitHub, type SystemImprovementRow } from "./outputs/ops-filing";
 import { sendReflectionTelegram } from "./outputs/telegram";
+import { applySpiritDrift, computeDriftDelta, type SpiritDriftResult } from "./outputs/spirit-drift";
 import type { Env, InputVolumes } from "./types";
 import type { ComputedMetrics } from "./digest/schema";
 import { isSectionError } from "./digest/schema";
@@ -30,6 +31,7 @@ export interface FlowResult {
   notified: boolean;
   notify_message_id?: number;
   warnings: string[];
+  spirit_drift?: SpiritDriftResult;
 }
 
 const MAX_OPS_ROWS = 3;
@@ -155,6 +157,22 @@ export async function runReflectionFlow(params: FlowParams): Promise<FlowResult>
         warnings.push(`telegram exception: ${String(err)}`);
       }
     }
+  }
+
+  // Step 6: Spirit Level drift (Pb — weekly auto-drift, ±1/week, soft-degrades; skipped on smoke)
+  try {
+    if (smoke) {
+      const { delta, reason } = computeDriftDelta(computed);
+      result.spirit_drift = { attempted: false, delta, reason: `[smoke-dry] ${reason}`, applied: false };
+    } else {
+      result.spirit_drift = await applySpiritDrift(
+        { BRAIN_WRITE_BASE: env.BRAIN_WRITE_BASE, BRAIN_WRITE_API_SECRET: env.BRAIN_WRITE_API_SECRET },
+        computed
+      );
+      if (result.spirit_drift.error) warnings.push(`spirit drift: ${result.spirit_drift.error}`);
+    }
+  } catch (err) {
+    warnings.push(`spirit drift exception: ${String(err)}`);
   }
 
   return result;
