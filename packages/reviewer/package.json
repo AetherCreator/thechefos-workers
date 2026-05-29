@@ -5,11 +5,14 @@
   "description": "Reviewer Worker — 5-gate QA checker (FOUNDRY-SCHEMA v1.0)",
   "main": "src/index.ts",
   "scripts": {
-    "deploy": "wrangler deploy --keep-vars"
+    "deploy": "wrangler deploy --keep-vars",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240502.0",
+    "@types/node": "^20.0.0",
     "typescript": "^5.4.5",
+    "vitest": "^2.0.0",
     "wrangler": "^3.85.0"
   }
 }

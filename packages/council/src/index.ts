@@ -209,82 +209,108 @@ function geometricMean(scores: number[]): number {
   return Math.pow(product, 1 / scores.length);
 }
 
+// Reasoning suppression — cuts K2.6 <think> load so generation is fast and
+// content is non-empty. /no_think directive + explicit instruction covers both
+// known Kimi suppression surfaces. extractJsonObject <think>-strip is backstop.
+const REASONING_SUPPRESS = 'Answer immediately. Output ONLY the JSON object. Do NOT produce extended reasoning or <think> blocks. /no_think\n\n';
+
 // =============================================================================
-// JUDGE CALL — single Workers AI in-network round-trip with Promise.race timeout,
-// JSON parse, validation. Always returns either a valid scored response or an
-// {abstain: true} object. Never throws into the caller.
+// JUDGE CALL — Workers AI in-network round-trip with retry-with-backoff.
+// Up to 3 attempts, ~400ms*attempt backoff. Retries on: ai_error (thrown),
+// empty content, timeout. Parse/validation errors abstain immediately (no retry).
+// Always returns either a valid scored response or an {abstain: true} object.
+// Never throws into the caller.
 //
 // Pivoted 2026-05-07 from HTTP fetch to NVIDIA NIM → env.AI.run() binding for
-// Kimi K2.6. Promise.race wrapper because env.AI.run() doesn't accept AbortSignal;
-// 3 parallel judges still need bounded wall-clock per judge.
+// Kimi K2.6. Promise.race wrapper because env.AI.run() doesn't accept AbortSignal.
 // =============================================================================
 
-async function callJudge(
+export async function callJudge(
   name: 'realist' | 'economist' | 'skeptic',
   systemPrompt: string,
   userPrompt: string,
-  env: Env
+  env: Env,
+  _backoffMs = 400
 ): Promise<any> {
   const timeoutMs = parseInt(env.PER_JUDGE_TIMEOUT_MS, 10);
+  const suppressedSystem = REASONING_SUPPRESS + systemPrompt;
+  const MAX_ATTEMPTS = 3;
 
-  const aiCall = (async () => {
-    const result: any = await env.AI.run(env.NIM_MODEL, {
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 8192   // judge JSON output is ~1KB; Kimi reasoning_content can be 4-6x
-                         // that. 8192 is enough headroom without overspend (vs Locke's 16384
-                         // for multi-lead arrays). Bump to 12288 if `finish_reason: length`.
-    });
-    // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] }
-    // OpenAI-compat. Kimi K2.6 returns OpenAI-compat by default.
-    //
-    // Defensive: any of the three paths may return a native JS array/object rather than
-    // a stringified payload when the model is prompted for structured output. Mirror of
-    // Locke commit 776971f0 (workers-ai-native-array-output gotcha). See
-    // brain/02-knowledge/workers-ai-native-array-output.md.
-    const rawText =
-      result?.response ||
-      result?.choices?.[0]?.message?.content ||
-      result?.result?.response ||
-      '';
-    const text = typeof rawText === 'string' ? rawText : JSON.stringify(rawText);
-    if (!text) {
-      throw new Error(`AI binding empty: keys=${Object.keys(result || {}).join(',')} | preview=${JSON.stringify(result).slice(0, 400)}`);
+  let lastError: any;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      await new Promise(r => setTimeout(r, _backoffMs * (attempt - 1)));
     }
-    return text;
-  })();
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error('timeout')), timeoutMs);
-  });
-
-  try {
-    const text = await Promise.race([aiCall, timeoutPromise]);
-    let parsed: any;
     try {
-      parsed = extractJsonObject(text as string);
+      const aiCallPromise = (async () => {
+        const result: any = await env.AI.run(env.NIM_MODEL, {
+          messages: [
+            { role: 'system', content: suppressedSystem },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 4096   // reasoning suppressed; judge JSON is ~1KB
+        });
+        // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] }
+        // OpenAI-compat. Kimi K2.6 returns OpenAI-compat by default.
+        //
+        // Defensive: any of the three paths may return a native JS array/object rather than
+        // a stringified payload when the model is prompted for structured output. Mirror of
+        // Locke commit 776971f0 (workers-ai-native-array-output gotcha). See
+        // brain/02-knowledge/workers-ai-native-array-output.md.
+        const rawText =
+          result?.response ||
+          result?.choices?.[0]?.message?.content ||
+          result?.result?.response ||
+          '';
+        const text = typeof rawText === 'string' ? rawText : JSON.stringify(rawText);
+        if (!text) {
+          throw new Error(`AI binding empty: keys=${Object.keys(result || {}).join(',')} | preview=${JSON.stringify(result).slice(0, 400)}`);
+        }
+        return text;
+      })();
+      // Silence dangling rejection if the other side of the race wins
+      aiCallPromise.catch(() => {});
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('timeout')), timeoutMs);
+      });
+      timeoutPromise.catch(() => {});
+
+      const text = await Promise.race([aiCallPromise, timeoutPromise]);
+
+      // Parse error → abstain immediately, no retry (model returned something, just malformed)
+      let parsed: any;
+      try {
+        parsed = extractJsonObject(text as string);
+      } catch (e: any) {
+        return { judge: name, abstain: true, reason: `parse_error: ${String(e?.message ?? e).slice(0, 80)}` };
+      }
+
+      // Validation errors → abstain immediately, no retry
+      if (parsed?.abstain === true) {
+        return { judge: name, abstain: true, reason: String(parsed.reason ?? 'judge_self_abstained').slice(0, 200) };
+      }
+      if (parsed?.judge !== name) {
+        return { judge: name, abstain: true, reason: 'judge_name_mismatch' };
+      }
+      if (typeof parsed.score !== 'number' || !Number.isFinite(parsed.score) || parsed.score < 0 || parsed.score > 100) {
+        return { judge: name, abstain: true, reason: 'score_out_of_range' };
+      }
+      return parsed;
+
     } catch (e: any) {
-      return { judge: name, abstain: true, reason: `parse_error: ${String(e?.message ?? e).slice(0, 80)}` };
+      // Retryable: ai_error (thrown by env.AI.run), empty content, timeout
+      lastError = e;
+      if (attempt < MAX_ATTEMPTS) console.warn(`callJudge(${name}) attempt ${attempt} failed: ${e?.message}`);
     }
-    if (parsed?.abstain === true) {
-      return { judge: name, abstain: true, reason: String(parsed.reason ?? 'judge_self_abstained').slice(0, 200) };
-    }
-    if (parsed?.judge !== name) {
-      return { judge: name, abstain: true, reason: 'judge_name_mismatch' };
-    }
-    if (typeof parsed.score !== 'number' || !Number.isFinite(parsed.score) || parsed.score < 0 || parsed.score > 100) {
-      return { judge: name, abstain: true, reason: 'score_out_of_range' };
-    }
-    return parsed;
-  } catch (e: any) {
-    if (e?.message === 'timeout') {
-      return { judge: name, abstain: true, reason: 'timeout' };
-    }
-    return { judge: name, abstain: true, reason: `ai_error: ${String(e?.message ?? e).slice(0, 80)}` };
   }
+
+  // All 3 attempts exhausted
+  if (lastError?.message === 'timeout') {
+    return { judge: name, abstain: true, reason: 'timeout' };
+  }
+  return { judge: name, abstain: true, reason: `ai_error: ${String(lastError?.message ?? lastError).slice(0, 80)}` };
 }
 
 // =============================================================================

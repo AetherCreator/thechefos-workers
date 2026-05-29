@@ -67,38 +67,59 @@ function extractJsonObject(text: string): any {
   return JSON.parse(slice);
 }
 
+// Reasoning suppression — cuts K2.6 <think> load so generation is fast and
+// content is non-empty. /no_think directive + explicit instruction covers both
+// known Kimi suppression surfaces. extractJsonObject <think>-strip is backstop.
+const REASONING_SUPPRESS = "Answer immediately. Output ONLY the JSON object. Do NOT produce extended reasoning or <think> blocks. /no_think\n\n";
+
 // Kimi K2.6 via Workers AI binding (in-network, sync). Mirrors Locke + Council
 // + Schemer pattern. Promise.race wrapper because env.AI.run() does not accept
 // AbortSignal. Per-gate timeout via env.PER_GATE_TIMEOUT_MS.
-async function callKimi(systemPrompt: string, userPrompt: string, env: Env): Promise<any> {
+// Retry-with-backoff: up to 3 attempts, 400ms*attempt between retries.
+// Retries on: ai_error (thrown), empty content, timeout. After 3 failures,
+// re-throws the last error for the gate function to catch.
+export async function callKimi(systemPrompt: string, userPrompt: string, env: Env, _backoffMs = 400): Promise<any> {
   const timeoutMs = parseInt(env.PER_GATE_TIMEOUT_MS || "30000", 10);
+  const suppressedSystem = REASONING_SUPPRESS + systemPrompt;
+  const MAX_ATTEMPTS = 3;
 
-  const aiCall = (async () => {
-    const result: any = await env.AI.run(env.NIM_MODEL, {
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 16384   // gate JSON output is small (~500 tok); reasoning fills rest
-    });
-    const text =
-      (typeof result?.response === "string" && result.response) ||
-      result?.choices?.[0]?.message?.content ||
-      result?.result?.response ||
-      "";
-    if (!text) {
-      throw new Error("AI binding empty: keys=" + Object.keys(result || {}).join(","));
+  let lastError: any;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      await new Promise(r => setTimeout(r, _backoffMs * (attempt - 1)));
     }
-    return text;
-  })();
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error("timeout")), timeoutMs);
-  });
-
-  const text = await Promise.race([aiCall, timeoutPromise]);
-  return extractJsonObject(text as string);
+    try {
+      const aiCallP = (async () => {
+        const result: any = await env.AI.run(env.NIM_MODEL, {
+          messages: [
+            { role: "system", content: suppressedSystem },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 4096   // reasoning suppressed; gate JSON is ~500 tok
+        });
+        const t =
+          (typeof result?.response === "string" && result.response) ||
+          result?.choices?.[0]?.message?.content ||
+          result?.result?.response ||
+          "";
+        if (!t) throw new Error("AI binding empty: keys=" + Object.keys(result || {}).join(","));
+        return t;
+      })();
+      // Silence dangling rejection if the other side of the race wins
+      aiCallP.catch(() => {});
+      const timeoutP = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("timeout")), timeoutMs);
+      });
+      timeoutP.catch(() => {});
+      const text = await Promise.race([aiCallP, timeoutP]);
+      return extractJsonObject(text as string);
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < MAX_ATTEMPTS) console.warn(`callKimi attempt ${attempt} failed: ${err?.message}`);
+    }
+  }
+  throw lastError;
 }
 
 async function fetchUrlWithTiming(url: string): Promise<{text: string; statusCode: number; ms: number}> {
