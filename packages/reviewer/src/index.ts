@@ -96,7 +96,7 @@ export async function callKimi(systemPrompt: string, userPrompt: string, env: En
             { role: "user", content: userPrompt }
           ],
           temperature: 0.3,
-          max_tokens: 4096   // reasoning suppressed; gate JSON is ~500 tok
+          max_tokens: 16384  // suppression best-effort; gate3 HTML still triggers reasoning past 4096
         });
         const t =
           (typeof result?.response === "string" && result.response) ||

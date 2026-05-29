@@ -249,7 +249,7 @@ export async function callJudge(
             { role: 'user', content: userPrompt }
           ],
           temperature: 0.3,
-          max_tokens: 4096   // reasoning suppressed; judge JSON is ~1KB
+          max_tokens: 8192   // suppression best-effort; 8192 matches pre-suppression value
         });
         // Workers AI sync shape: { response: "..." } native OR { choices: [{message: {content}}] }
         // OpenAI-compat. Kimi K2.6 returns OpenAI-compat by default.
