@@ -68,23 +68,32 @@ async function readJsonFromBrain(filePath: string, env: Env): Promise<any> {
   return await r.json();
 }
 
-// Helper: Find lead file (search today, yesterday, _drafts)
-async function findLeadPath(leadId: string, env: Env): Promise<string | null> {
+// Helper: Find lead file (search today, yesterday, _drafts via GitHub Contents API directory listing)
+export async function findLeadPath(leadId: string, env: Env): Promise<string | null> {
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const candidates = [
-    `brain/05-leads/${today}/${leadId}.json`,
-    `brain/05-leads/${yesterday}/${leadId}.json`,
-    `brain/05-leads/_drafts/${leadId}.json`
+  const candidateDirs = [
+    `brain/05-leads/${today}`,
+    `brain/05-leads/${yesterday}`,
+    `brain/05-leads/_drafts`
   ];
-  for (const p of candidates) {
+  for (const dir of candidateDirs) {
     try {
-      const r = await fetch(`${env.BRAIN_RAW_BASE}/${p}`, {
-        method: 'HEAD',
-        headers: ghReadHeaders(env)
+      const r = await fetch(`${env.BRAIN_GH_API_BASE}/${dir}`, {
+        headers: ghReadHeaders(env, 'application/vnd.github.v3+json')
       });
-      if (r.ok) return p;
-    } catch { /* try next */ }
+      if (!r.ok) continue;
+      const files: any[] = await r.json();
+      if (!Array.isArray(files)) continue;
+      // Match new format (^<leadId>\.) or legacy exact (<leadId>.json); exclude verdict sidecars.
+      const match = files.find((f: any) => {
+        if (typeof f?.name !== 'string') return false;
+        const n = f.name;
+        if (n.endsWith('.verdict.json') || !n.endsWith('.json')) return false;
+        return n === `${leadId}.json` || n.startsWith(`${leadId}.`);
+      });
+      if (match) return match.path as string;
+    } catch { /* try next dir */ }
   }
   return null;
 }

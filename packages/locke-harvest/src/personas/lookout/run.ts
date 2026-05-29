@@ -190,6 +190,10 @@ function painMatchOverlap(painMatch: string, painStatement: string): number {
   return overlap;
 }
 
+export function sanitizeForFilename(s: string): string {
+  return String(s).toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+}
+
 function isValidLead(lead: any): { ok: boolean; reason?: string } {
   if (!lead || typeof lead !== 'object') return { ok: false, reason: 'not-object' };
   const required = ['lead_id', 'source_threads', 'mark_profile', 'pain_statement', 'pain_frequency',
@@ -473,7 +477,9 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
     const dir = (enriched.confidence === 'low' || enriched.pattern_type === 'single_signal')
       ? `${env.BRAIN_PATH}/_drafts`
       : `${env.BRAIN_PATH}/${today}`;
-    const path = `${dir}/${enriched.lead_id}.json`;
+    const safeType = sanitizeForFilename(enriched.pattern_type);
+    const safeConf = sanitizeForFilename(enriched.confidence);
+    const path = `${dir}/${enriched.lead_id}.${safeType}.${safeConf}.json`;
     try {
       await writeBrain(path, JSON.stringify(enriched, null, 2),
         `locke-harvest: ${enriched.lead_id} (${enriched.confidence}/${enriched.pattern_type})`, env);

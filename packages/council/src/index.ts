@@ -328,22 +328,31 @@ async function readLead(leadPath: string, env: Env): Promise<any> {
   return await r.json();
 }
 
-async function findLeadPath(leadId: string, env: Env): Promise<string | null> {
+export async function findLeadPath(leadId: string, env: Env): Promise<string | null> {
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const candidates = [
-    `brain/05-leads/${today}/${leadId}.json`,
-    `brain/05-leads/${yesterday}/${leadId}.json`,
-    `brain/05-leads/_drafts/${leadId}.json`
+  const candidateDirs = [
+    `brain/05-leads/${today}`,
+    `brain/05-leads/${yesterday}`,
+    `brain/05-leads/_drafts`
   ];
-  for (const p of candidates) {
+  for (const dir of candidateDirs) {
     try {
-      const r = await fetch(`${env.BRAIN_RAW_BASE}/${p}`, {
-        method: 'HEAD',
-        headers: ghReadHeaders(env)
+      const r = await fetch(`${env.BRAIN_GH_API_BASE}/${dir}`, {
+        headers: ghReadHeaders(env, 'application/vnd.github.v3+json')
       });
-      if (r.ok) return p;
-    } catch { /* try next */ }
+      if (!r.ok) continue;
+      const files: any[] = await r.json();
+      if (!Array.isArray(files)) continue;
+      // Match new format (^<leadId>\.) or legacy exact (<leadId>.json); exclude verdict sidecars.
+      const match = files.find((f: any) => {
+        if (typeof f?.name !== 'string') return false;
+        const n = f.name;
+        if (n.endsWith('.verdict.json') || !n.endsWith('.json')) return false;
+        return n === `${leadId}.json` || n.startsWith(`${leadId}.`);
+      });
+      if (match) return match.path as string;
+    } catch { /* try next dir */ }
   }
   return null;
 }
@@ -392,7 +401,7 @@ const NON_LEAD_FILENAME_PATTERNS: RegExp[] = [
   /^_/,                   // reserved/system files
 ];
 
-function isNonLeadFilename(name: string): boolean {
+export function isNonLeadFilename(name: string): boolean {
   const stem = name.replace(/\.json$/, '');
   return NON_LEAD_FILENAME_PATTERNS.some((rx) => rx.test(stem));
 }
@@ -521,11 +530,14 @@ async function deliberate(
   //   - canary held (approved + gate up) → brain/05-leads/_canary/
   //   - abstained/unprocessable          → brain/05-leads/_review/
   //   - approved (gate lifted) / killed  → next to the lead
+  // Use full lead filename stem (not bare lead_id) so new-format leads like
+  // foo.single_signal.high.json produce foo.single_signal.high.verdict.json.
+  const leadFileStem = leadPath.split('/').pop()!.replace(/\.json$/, '');
   let verdictPath: string;
   if (canaryHeld) {
-    verdictPath = `brain/05-leads/_canary/${lead.lead_id}.verdict.json`;
+    verdictPath = `brain/05-leads/_canary/${leadFileStem}.verdict.json`;
   } else if (verdictType === 'abstained' || verdictType === 'unprocessable') {
-    verdictPath = `brain/05-leads/_review/${lead.lead_id}.verdict.json`;
+    verdictPath = `brain/05-leads/_review/${leadFileStem}.verdict.json`;
   } else {
     verdictPath = leadPath.replace(/\.json$/, '.verdict.json');
   }
@@ -577,8 +589,9 @@ async function notifyTelegram(verdict: any, lead: any, env: Env): Promise<void> 
   const realist = verdict.judges.find((j: any) => j.judge === 'realist') || { abstain: true, reason: 'missing' };
   const economist = verdict.judges.find((j: any) => j.judge === 'economist') || { abstain: true, reason: 'missing' };
   const skeptic = verdict.judges.find((j: any) => j.judge === 'skeptic') || { abstain: true, reason: 'missing' };
+  const verdictFileStem = String(verdict.lead_path || '').split('/').pop()?.replace(/\.json$/, '') || lead.lead_id;
   const trailer =
-    verdict.canary_held ? `\n→ 🐤 CANARY HELD — review at brain/05-leads/_canary/${lead.lead_id}.verdict.json` :
+    verdict.canary_held ? `\n→ 🐤 CANARY HELD — review at brain/05-leads/_canary/${verdictFileStem}.verdict.json` :
     verdict.verdict === 'approved' ? '\n→ Schemer is drafting the THDD scaffold' :
     verdict.verdict === 'killed' && verdict.kill_reasons?.[0] ? `\n→ ${verdict.kill_reasons[0]}` :
     (verdict.verdict === 'abstained' || verdict.verdict === 'unprocessable') ? '\n→ manual review at brain/05-leads/_review/' :
@@ -647,6 +660,9 @@ async function runSweep(env: Env): Promise<any> {
       .map((f: any) => f.name as string)
   );
 
+  // Parse once outside the loop — used by the filename confidence prefilter below.
+  const confidenceFilter: string[] = JSON.parse(env.CONFIDENCE_FILTER);
+
   for (const f of files) {
     if (!f?.name?.endsWith('.json')) continue;
     if (f.name.endsWith('.verdict.json')) continue;
@@ -656,6 +672,19 @@ async function runSweep(env: Env): Promise<any> {
       skipped++;
       await logIntel(env, { event: 'sweep_prefiltered_nonlead', session_id: sessionId, filename: f.name });
       continue;
+    }
+    // Confidence prefilter from filename stem (new format: <leadId>.<pattern_type>.<confidence>.json).
+    // leadId never contains dots, so parts[parts.length-1] is confidence when parts.length >= 3.
+    // Legacy files (<leadId>.json, parts.length === 1) skip this and fall through to fetch-based filterLead.
+    const stem = f.name.replace(/\.json$/, '');
+    const parts = stem.split('.');
+    if (parts.length >= 3) {
+      const filenameConfidence = parts[parts.length - 1];
+      if (!confidenceFilter.includes(filenameConfidence)) {
+        skipped++;
+        await logIntel(env, { event: 'sweep_prefiltered_confidence', session_id: sessionId, filename: f.name, confidence: filenameConfidence });
+        continue;
+      }
     }
     const leadPath: string = f.path;
     try {
