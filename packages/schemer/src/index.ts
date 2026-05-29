@@ -332,7 +332,7 @@ Treasure: {what Tyler sees when it works}
           };
 
           await writeBrain(
-            `brain/06-foundry/_drafts/schemer-error-${sessionId}.json`,
+            `brain/06-diagnostics/schemer/schemer-error-${sessionId}.json`,
             JSON.stringify(diagnostic, null, 2),
             `schemer: validation failed for lead ${lead.lead_id}`,
             env

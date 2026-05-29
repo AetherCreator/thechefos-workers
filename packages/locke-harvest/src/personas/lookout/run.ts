@@ -431,7 +431,7 @@ async function runHunt(env: Env, trigger: 'cron' | 'manual'): Promise<{ kept: nu
   if (reachedPhase3) {
     try {
       await writeBrain(
-        `${env.BRAIN_PATH}/_drafts/analyzer-trace-${sessionId}.json`,
+        `brain/06-diagnostics/lookout/analyzer-trace-${sessionId}.json`,
         JSON.stringify({
           session_id: sessionId,
           timestamp: new Date().toISOString(),
