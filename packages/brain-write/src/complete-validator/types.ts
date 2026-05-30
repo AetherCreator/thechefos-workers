@@ -17,7 +17,7 @@ export type BlockedCode =
   | 'blocked_rate_limit'
   | 'blocked_verify_log_reproduction_failed'
 
-export type Agent = 'carpenter' | 'hunter' | 'claude-code' | 'chat-opus' | 'conductor' | 'unknown'
+export type Agent = 'carpenter' | 'hunter' | 'claude-code' | 'chat-opus' | 'conductor' | 'grok' | 'unknown'
 
 export type ValidatorVerdict =
   | { verdict: 'applied'; parsed: CompleteSchemaType; agent: Agent }
