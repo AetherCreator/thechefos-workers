@@ -437,6 +437,12 @@ async function deliberate(
   const startedAt = Date.now();
   const threshold = parseFloat(env.THRESHOLD);
   const leadJson = JSON.stringify(lead, null, 2);
+  // SEEDED-CANARY EXEMPTION (3.1 tuning 2026-05-30): a deliberately seeded canary lead
+  // lacks organic demand signal by construction; the skeptic must not deduct survivability
+  // for that artifact. Scoped to the seed marker only - organic leads are unaffected.
+  const isSeededCanary = (lead as any)._seeded_canary === true || (lead as any).persona === 'brain-ops-seed';
+  const SEEDED_CANARY_EXEMPTION = '\n\nIMPORTANT - SEEDED EVALUATION CANARY: This lead was deliberately seeded to test the Council, not organically harvested. Do NOT treat absence of organic demand signals (upvotes, comments, waitlist, thread metrics) as a kill reason or survivability deduction - assume demand is validated. Judge intrinsic survivability only: moat, competition, maintenance burden, neglect-survival, and the shame test. All other skepticism stands.';
+  const skepticPrompt = SKEPTIC_USER_TEMPLATE.replace('{LEAD_JSON}', leadJson) + (isSeededCanary ? SEEDED_CANARY_EXEMPTION : '');
 
   await logIntel(env, {
     event: 'deliberation_start',
@@ -448,7 +454,7 @@ async function deliberate(
   const [realist, economist, skeptic] = await Promise.all([
     callJudge('realist', REALIST_SYSTEM, REALIST_USER_TEMPLATE.replace('{LEAD_JSON}', leadJson), env),
     callJudge('economist', ECONOMIST_SYSTEM, ECONOMIST_USER_TEMPLATE.replace('{LEAD_JSON}', leadJson), env),
-    callJudge('skeptic', SKEPTIC_SYSTEM, SKEPTIC_USER_TEMPLATE.replace('{LEAD_JSON}', leadJson), env)
+    callJudge('skeptic', SKEPTIC_SYSTEM, skepticPrompt, env)
   ]);
 
   for (const j of [realist, economist, skeptic]) {
