@@ -22,6 +22,7 @@ interface Env {
   CONFIDENCE_FILTER: string;         // JSON array
   PATTERN_TYPE_FILTER: string;       // JSON array
   THRESHOLD: string;                 // float as string
+  FUNNEL_THRESHOLD: string;          // funnel-tier bar, < standalone THRESHOLD
   NIM_URL: string;                   // legacy — no longer read post Kimi pivot
   NIM_MODEL: string;                 // now Workers AI model id (e.g. @cf/moonshotai/kimi-k2.6)
   BRAIN_RAW_BASE: string;
@@ -473,6 +474,7 @@ async function deliberate(
   let geoMean: number | null = null;
   let killReasons: string[] = [];
   let nextStep: 'schemer' | 'graveyard' | 'manual_review';
+  let tier: 'standalone' | 'funnel' | null = null;
 
   const allAbstain = [realist, economist, skeptic].every(j => j.abstain);
   const anyAbstain = [realist, economist, skeptic].some(j => j.abstain);
@@ -488,8 +490,14 @@ async function deliberate(
     nextStep = 'manual_review';
   } else {
     geoMean = geometricMean([realist.score, economist.score, skeptic.score]);
+    const funnelThreshold = parseFloat(env.FUNNEL_THRESHOLD ?? '70');
     if (geoMean >= threshold) {
       verdictType = 'approved';
+      tier = 'standalone';
+      nextStep = 'schemer';
+    } else if (geoMean >= funnelThreshold) {
+      verdictType = 'approved';
+      tier = 'funnel';
       nextStep = 'schemer';
     } else {
       verdictType = 'killed';
@@ -527,6 +535,7 @@ async function deliberate(
     geometric_mean: geoMean !== null ? Math.round(geoMean * 100) / 100 : null,
     threshold,
     verdict: verdictType,
+    tier,
     next_step: nextStep,
     kill_reasons: killReasons,
     wall_clock_ms: Date.now() - startedAt

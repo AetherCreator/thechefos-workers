@@ -19,6 +19,7 @@ SUPPORTED_LEAD_VERSIONS = "locke-1.0,locke-1.1,locke-1.2"
 CONFIDENCE_FILTER = "[\"low\",\"medium\",\"high\",\"dead_certain\"]"
 PATTERN_TYPE_FILTER = "[\"single_signal\",\"repeated\",\"long_con\"]"
 THRESHOLD = "80.0"
+FUNNEL_THRESHOLD = "70.0"
 # NIM_URL retained as legacy var (no longer read by code post Kimi pivot 2026-05-07);
 # kept in env to ease revert if Kimi K2.6 underperforms on judge prompts.
 NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
