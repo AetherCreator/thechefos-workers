@@ -2,17 +2,23 @@
 //
 // C1: V1 schema + V4 verify-log parse + V5 strict + H2 deltas
 //     (placeholder rejection, BLOCKED-flags semantics).
-// C2: V2 status-evidence + V3 push verification + D1 cross-source SHA (this clue).
+// C2: V2 status-evidence + V3 push verification + D1 cross-source SHA + reproduction pass.
+//     Reproduction pass: for object verify_log entries {cmd,expect,claim}, re-executes
+//     each cmd against origin@work_commit via GitHub API. Mismatch => blocked_verify_log_reproduction_failed.
+//     Auto-files grok-verify-failed OPS row on rejection (soft-degrade, never re-blocks).
 // C3: webhook integration + COMPLETE_VALIDATOR_DRY_RUN gate + audit trail.
 // C2 Guard Layer hook: fireXpGrantHook added after evidence check (soft-degrade, never blocks verdict)
 
 import { parse as parseYaml } from 'yaml'
 import type { ZodIssue } from 'zod'
 import { CompleteSchema } from './schema'
+import type { VerifyLogObjectEntry } from './schema'
 import { parseVerifyLog } from './verify-log'
 import { inferAgent } from './agent'
 import { checkEvidence } from './evidence'
 import { fireXpGrantHook } from './xp-grant-hook'
+import { reproduceEntries } from './reproduce'
+import { fileGrokVerifyFailed } from './gvh-ops-filer'
 import type { BlockedCode, ValidatorEnv, ValidatorVerdict } from './types'
 
 /**
@@ -116,16 +122,9 @@ export async function validateComplete(
   }
   const parsed = parseResult.data
 
-  // 3. V4 verify-log parse
-  const v4 = parseVerifyLog(parsed.verify_log)
-  if (!v4.ok) {
-    return {
-      verdict: 'blocked_verify_log_malformed',
-      code: 'blocked_verify_log_malformed',
-      message: `verify_log entries at indices ${v4.malformed.join(', ')} do not match canonical pattern (<cmd>: exit=<code> <summary>)`,
-      diagnosis: { malformed_indices: v4.malformed, entries: parsed.verify_log },
-    }
-  }
+  // 3. V4 verify-log parse (informational; schema already enforces shape)
+  // After C2 schema change, this always returns ok:true — kept for audit trail.
+  parseVerifyLog(parsed.verify_log)
 
   // 4. Agent inference (informs D1 cross-source check + C3 audit trail)
   const agent = inferAgent(parsed)
@@ -141,7 +140,41 @@ export async function validateComplete(
     }
   }
 
-  // C2 Guard Layer hook — AFTER evidence/audit, BEFORE response return
+  // 6. C2 reproduction pass — re-execute object verify_log entries against origin@work_commit.
+  // String entries use legacy V4 path (no re-execution). Object entries are the C2 format.
+  const objectEntries = parsed.verify_log.filter(
+    (e): e is VerifyLogObjectEntry => typeof e === 'object' && e !== null,
+  )
+  if (objectEntries.length > 0) {
+    const repro = await reproduceEntries(objectEntries, parsed.work_repo, parsed.work_commit, env)
+    if (repro.verdict === 'REJECTED') {
+      // Auto-file OPS row — soft-degrade: never blocks the rejection verdict itself
+      fileGrokVerifyFailed(env, {
+        hunt: parsed.hunt,
+        clue: parsed.clue,
+        work_commit: parsed.work_commit,
+        failing_entry: repro.failing_entry!,
+      }).catch(err => console.error('[gvh-ops-filer] soft-fail:', String(err)))
+
+      const fe = repro.failing_entry!
+      return {
+        verdict: 'blocked_verify_log_reproduction_failed',
+        code: 'blocked_verify_log_reproduction_failed',
+        message: `verify_log cmd failed re-execution: ${fe.cmd}`,
+        diagnosis: {
+          cmd: fe.cmd,
+          expect: fe.expect,
+          claim: fe.claim,
+          actual_exit: fe.actual_exit,
+          actual_stdout: fe.actual_stdout,
+          detail: fe.detail,
+          wall_ms: repro.wall_ms,
+        },
+      }
+    }
+  }
+
+  // C2 Guard Layer hook — AFTER evidence/audit + reproduction, BEFORE response return
   // Soft-degrade: any failure is logged but NEVER blocks the 'applied' verdict
   await fireXpGrantHook(env as any, parsed, agent)
 
