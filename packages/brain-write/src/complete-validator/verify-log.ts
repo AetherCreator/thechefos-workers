@@ -7,17 +7,18 @@
 // Natural-language entry (Chat-Opus / Carpenter / human-authored):
 //   any non-empty string ≥ 5 chars
 //
-// Pre-fix the validator failed on natural-language entries (em-dash separator,
-// "ok" instead of "exit=0", etc.), producing blocked_verify_log_malformed
-// false-negatives across quest-log + eval-synthetic hunts. The strict pattern
-// over-constrained the contract for the actual range of authoring surfaces.
+// C2 delta: verify_log entries are now a union of string | {cmd, expect, claim} objects.
+// The schema (zod) enforces: strings ≥ 5 chars OR strict {cmd, expect, claim} objects.
+// Blank/short strings are rejected at schema level (blocked_schema), not here.
+// Object entries (the C2 machine-executable format) are always valid at parse level —
+// the reproduction pass in index.ts handles them.
 //
-// Now the validator only fails if entries are blank/trivially-short. The
-// structured parser remains for machine-emitted entries that downstream
-// consumers (D1 cross-source, audit trail) can still cheaply parse.
+// This function is now informational-only for the V4 structured parse (audit trail,
+// agent heuristic). It always returns ok:true because the schema already enforces shape.
+
+import type { VerifyLogObjectEntry } from './schema'
 
 const ENTRY_PATTERN = /^(.+?):\s*(?:exit=)?(-?\d+)\s+(.+)$/
-const MIN_ENTRY_LEN = 5
 
 export interface ParsedEntry {
   cmd: string
@@ -26,21 +27,21 @@ export interface ParsedEntry {
 }
 
 export type VerifyLogResult =
-  | { ok: true; parsed: ParsedEntry[]; informational_malformed: number[] }
+  | { ok: true; parsed: ParsedEntry[]; informational_malformed: number[]; object_entry_count: number }
   | { ok: false; malformed: number[]; parsed: ParsedEntry[] }
 
-export function parseVerifyLog(entries: string[]): VerifyLogResult {
+export function parseVerifyLog(entries: (string | VerifyLogObjectEntry)[]): VerifyLogResult {
   const parsed: ParsedEntry[] = []
   const informational_malformed: number[] = []
-  const blocking_malformed: number[] = []
+  let object_entry_count = 0
 
   entries.forEach((entry, idx) => {
-    // Blocking failure: trivially short / blank / non-string-ish content.
-    if (typeof entry !== 'string' || entry.trim().length < MIN_ENTRY_LEN) {
-      blocking_malformed.push(idx)
+    if (typeof entry === 'object' && entry !== null) {
+      // C2 object entry — valid by schema; reproduction pass handles it; count for audit
+      object_entry_count++
       return
     }
-    // Opportunistic structured parse for machine-emitted entries.
+    // String entry — schema guarantees >= 5 chars by this point
     const m = entry.match(ENTRY_PATTERN)
     if (m) {
       parsed.push({
@@ -49,13 +50,9 @@ export function parseVerifyLog(entries: string[]): VerifyLogResult {
         summary: m[3].trim(),
       })
     } else {
-      // Natural-language entry — log informationally, do not fail.
       informational_malformed.push(idx)
     }
   })
 
-  if (blocking_malformed.length > 0) {
-    return { ok: false, malformed: blocking_malformed, parsed }
-  }
-  return { ok: true, parsed, informational_malformed }
+  return { ok: true, parsed, informational_malformed, object_entry_count }
 }

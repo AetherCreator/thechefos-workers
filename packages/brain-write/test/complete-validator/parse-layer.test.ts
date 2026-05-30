@@ -58,12 +58,11 @@ describe('complete-validator C1 — parse layer (post-C2 pipeline integration)',
     expect(r.verdict).toBe('blocked_fictional_field')
   })
 
-  it('verify-log-malformed.md → blocked_verify_log_malformed', async () => {
+  it('verify-log-malformed.md → blocked_schema (C2: blank string fails union schema at zod level)', async () => {
+    // After C2 schema change: verify_log entries must be string>=5 OR {cmd,expect,claim} object.
+    // A blank "" entry fails both union alternatives → zod reports blocked_schema (not blocked_verify_log_malformed).
     const r = await validateComplete(load('verify-log-malformed.md'), env)
-    expect(r.verdict).toBe('blocked_verify_log_malformed')
-    if (r.verdict === 'blocked_verify_log_malformed') {
-      expect(r.diagnosis.malformed_indices).toEqual([0])
-    }
+    expect(r.verdict).toBe('blocked_schema')
   })
 
   it('placeholder-work-commit.md → blocked_placeholder (catches H2 fiction structurally)', async () => {
@@ -98,16 +97,11 @@ describe('H3 pre-flip fix (2026-05-24) — frontmatter + natural-language verify
     }
   })
 
-  it('blocked-blank-verify-entry.md → blocked_verify_log_malformed (blank string trips the floor)', async () => {
+  it('blocked-blank-verify-entry.md → blocked_schema (C2: short/blank strings fail union schema at zod level)', async () => {
+    // After C2 schema change: "ok" (2 chars), "abc" (3 chars), "" (blank) all fail
+    // z.string().min(5) AND z.object({...}) → zod union failure → blocked_schema.
     const r = await validateComplete(load('blocked-blank-verify-entry.md'), env)
-    expect(r.verdict).toBe('blocked_verify_log_malformed')
-    if (r.verdict === 'blocked_verify_log_malformed') {
-      const idx = r.diagnosis.malformed_indices as number[]
-      // Entry at index 2 is the empty string — that's the blocking one.
-      // (Indices 0, 1 ("ok", "abc") are also < 5 chars, so all three short ones block.)
-      expect(idx).toContain(2)
-      expect(idx.length).toBeGreaterThanOrEqual(1)
-    }
+    expect(r.verdict).toBe('blocked_schema')
   })
 
   it('extractFrontmatter is forgiving: raw-YAML fixture (no `---`) still parses identically', async () => {

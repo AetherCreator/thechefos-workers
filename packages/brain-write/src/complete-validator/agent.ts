@@ -10,8 +10,11 @@ export function inferAgent(parsed: CompleteSchemaType): Agent {
   // Priority 1: explicit field on COMPLETE.md
   if (parsed.agent) return parsed.agent
 
-  // Priority 2: heuristic over verify_log content
-  const blob = parsed.verify_log.join('\n').toLowerCase()
+  // Priority 2: heuristic over verify_log content (handles both string and object entries)
+  const blob = parsed.verify_log
+    .map(e => (typeof e === 'string' ? e : e.cmd))
+    .join('\n')
+    .toLowerCase()
   if (blob.includes(CARPENTER_HINT)) return 'carpenter'
   if (HUNTER_HINTS.some(h => blob.includes(h))) return 'hunter'
 

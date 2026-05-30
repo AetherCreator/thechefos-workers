@@ -1,5 +1,9 @@
-// COMPLETE.md schema — V1 (shape) + V5 (no unknown keys via strict) + H2 deltas
+// COMPLETE.md schema — V1 (shape) + V5 (no unknown keys via strict) + H2 deltas + C2 (object verify_log)
 // (placeholder rejection from H2 SubDiv #6, BLOCKED-flags semantics from H2 Seed 5)
+//
+// C2 delta: verify_log entries accept either the legacy string format (natural-language,
+// >= 5 chars) OR the new C2 object format { cmd, expect, claim } (machine-executable).
+// Object entries trigger the reproduction pass in index.ts. String entries use legacy V4 parse.
 //
 // Notes:
 //   - NotPlaceholder is checked BEFORE the SHA regex so placeholder values
@@ -50,7 +54,18 @@ export const CompleteSchema = z
     work_commit: Sha40NotPlaceholder,
     hunt_repo: OwnerRepo,
     hunt_commit: Sha40Optional,
-    verify_log: z.array(z.string()).min(1, 'verify_log must have at least 1 entry'),
+    verify_log: z.array(
+      z.union([
+        // Legacy: natural-language string entry (V4 parse path, no re-execution)
+        z.string().min(5, 'verify_log string entry must be at least 5 characters'),
+        // C2: machine-executable object entry ({cmd, expect, claim} — triggers reproduction pass)
+        z.object({
+          cmd: z.string().min(1, 'cmd must not be empty'),
+          expect: z.string().min(1, 'expect must not be empty'),
+          claim: z.string().min(1, 'claim must not be empty'),
+        }).strict(),
+      ])
+    ).min(1, 'verify_log must have at least 1 entry'),
     evidence_urls: z.array(NotPlaceholder),
     flags: z.array(z.string()),
     notes: z.string(),
@@ -64,5 +79,14 @@ export const CompleteSchema = z
   })
 
 export type CompleteSchemaType = z.infer<typeof CompleteSchema>
+
+// The structured verify_log entry shape (C2 format)
+export const VerifyLogObjectEntrySchema = z.object({
+  cmd: z.string().min(1),
+  expect: z.string().min(1),
+  claim: z.string().min(1),
+}).strict()
+
+export type VerifyLogObjectEntry = z.infer<typeof VerifyLogObjectEntrySchema>
 
 export { PLACEHOLDER_PATTERN }
