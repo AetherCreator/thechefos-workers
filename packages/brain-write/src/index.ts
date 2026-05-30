@@ -13,6 +13,7 @@ import { readSpiritTierForAudit } from './spirit/middleware-hook'
 import { brainXpRoutes } from './brain-xp/routes'
 import { touchXp } from './brain-xp/index'
 import type { BrainXpEnv } from './brain-xp/index'
+import { handleRuntimeVerdict } from './runtime-verdict/handler'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -1325,6 +1326,9 @@ app.route('/api/spirit', spiritRoutes)
 app.route('/api/brain', brainXpRoutes)
 
 // Health check
+// C2.1: decoupled runtime-verifier verdict sink (advisory; additive, never gates promotion)
+app.post('/api/runtime-verdict', handleRuntimeVerdict)
+
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', version: '0.7.0', features: ['brain-push', 'session-state', 'github-webhook', 'ops-board', 'playtester'] }))
 
 export default app
