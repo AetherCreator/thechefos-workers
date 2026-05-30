@@ -1,31 +1,37 @@
 #!/usr/bin/env bash
 # runtime-verifier.sh — C2.1 decoupled InfiniVeg runtime-verifier (Phase 1, ADVISORY)
 # Reproduces non-hermetic (godot/bash) verify_log entries against origin@work_commit,
-# evaluates each entry's `expect` predicate, emits a JSON runtime verdict.
+# evaluates each entry's `expect` predicate, emits a JSON runtime verdict, and
+# (optionally) POSTs the verdict to a callback URL for persistence.
 # Runs OUTSIDE the Cloudflare-Worker structural gate's critical path (decoupled tier).
 # Hunt: grok-verify-harness · clue-2.1 · OPS-GVH-C21-SHELL-REPRODUCE
 #
 # Usage:
 #   runtime-verifier.sh --work-repo OWNER/REPO --work-commit <40hex> \
-#       --hunt H --clue N [--branch B] --entries entries.json [--out verdict.json]
+#       --hunt H --clue N [--branch B] --entries entries.json [--out verdict.json] \
+#       [--callback-url URL] [--callback-key KEY]
 #
 # entries.json: [{"cmd": "...", "expect": "exit==0"}, ...]
 #   - "@GODOT@" in a cmd is substituted with $GODOT_BIN (default /usr/local/bin/godot)
 #   - cmds run from the checkout root, no network assumed
 # expect grammar (verify-standard subset): exit==0 | exit!=0 | exit==N |
 #   stdout_contains:<TOKEN> | grep_count>=N | grep_count==0
+# --callback-url: verdict is POSTed as JSON with header X-Runtime-Verify-Key: <key>
 set -uo pipefail
 
 WORK_REPO=""; WORK_COMMIT=""; HUNT=""; CLUE=""; BRANCH=""; ENTRIES=""; OUT=""
+CALLBACK_URL=""; CALLBACK_KEY=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --work-repo)   WORK_REPO="$2"; shift 2;;
-    --work-commit) WORK_COMMIT="$2"; shift 2;;
-    --hunt)        HUNT="$2"; shift 2;;
-    --clue)        CLUE="$2"; shift 2;;
-    --branch)      BRANCH="$2"; shift 2;;
-    --entries)     ENTRIES="$2"; shift 2;;
-    --out)         OUT="$2"; shift 2;;
+    --work-repo)    WORK_REPO="$2"; shift 2;;
+    --work-commit)  WORK_COMMIT="$2"; shift 2;;
+    --hunt)         HUNT="$2"; shift 2;;
+    --clue)         CLUE="$2"; shift 2;;
+    --branch)       BRANCH="$2"; shift 2;;
+    --entries)      ENTRIES="$2"; shift 2;;
+    --out)          OUT="$2"; shift 2;;
+    --callback-url) CALLBACK_URL="$2"; shift 2;;
+    --callback-key) CALLBACK_KEY="$2"; shift 2;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
@@ -102,10 +108,17 @@ print(json.dumps({
   "hunt":hunt,"clue":clue,"work_repo":repo,"work_commit":commit,
   "entries":entries,"total":total,"passed":passed,"failed":failed,
   "all_pass": (failed==0 and total>0),
-  "ran_at": datetime.datetime.utcnow().isoformat()+"Z"
+  "ran_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
 }))
 PYEOF
 )"
 
 if [ -n "$OUT" ]; then printf '%s\n' "$VERDICT" > "$OUT"; fi
 printf '%s\n' "$VERDICT"
+
+# --- optional callback POST (advisory persistence; non-fatal on failure) ---
+if [ -n "$CALLBACK_URL" ]; then
+  CB="$(printf '%s' "$VERDICT" | curl -fsS -o /dev/null -w '%{http_code}' -X POST "$CALLBACK_URL" \
+        -H 'Content-Type: application/json' -H "X-Runtime-Verify-Key: ${CALLBACK_KEY}" --data @- 2>/dev/null || echo 000)"
+  echo "callback_http=$CB" >&2
+fi
