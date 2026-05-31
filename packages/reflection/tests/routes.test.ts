@@ -108,17 +108,18 @@ describe("POST /api/reflect-now — week param validation", () => {
   });
 });
 
-describe("Cron handler stub", () => {
-  it("logs without throwing", async () => {
+describe("Cron handler (C2 — fires reflection)", () => {
+  it("runs runReflectionFlow for the current week and resolves", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await expect(
       worker.scheduled(
-        { scheduledTime: Date.now(), cron: "0 22 * * 0" } as ScheduledEvent,
+        { scheduledTime: Date.now(), cron: "0 22 * * SUN" } as unknown as ScheduledEvent,
         makeEnv(),
         {} as ExecutionContext
       )
     ).resolves.toBeUndefined();
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("[cron] reflection fired at"));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("[cron] reflection firing for"));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("[cron] reflection done:"));
     consoleSpy.mockRestore();
   });
 });
