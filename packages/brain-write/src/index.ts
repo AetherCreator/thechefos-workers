@@ -14,6 +14,7 @@ import { brainXpRoutes } from './brain-xp/routes'
 import { touchXp } from './brain-xp/index'
 import type { BrainXpEnv } from './brain-xp/index'
 import { handleRuntimeVerdict } from './runtime-verdict/handler'
+import { launchRuntimeVerify, selectUnsimulatable } from './runtime-verdict/launch'
 
 const REPO_OWNER = 'AetherCreator'
 const REPO_NAME = 'SuperClaude'
@@ -44,6 +45,9 @@ export interface Env {
   BRAIN_WRITE_API_SECRET?: string // auth key for POST /api/ops/file (X-Brain-Write-Key header)
   // P5 Pc C1: brain-xp D1 (superclaude-brain DB)
   SUPERCLAUDE_BRAIN?: D1Database
+  // C2.1 decoupled runtime-verifier (advisory): Shell Bridge launch target
+  SHELL_BRIDGE_URL?: string
+  SHELL_BRIDGE_KEY?: string
 }
 
 interface BrainPushPayload {
@@ -253,6 +257,26 @@ app.post('/api/webhook/github', async (c) => {
       vr.ping = await pingShipsDoctor(entry)
     }
     validatorResults.push(vr)
+
+    // C2.1: decoupled advisory runtime-verify (additive; never blocks/alters promotion)
+    if (parsed && !blocked) {
+      try {
+        const rtEntries = selectUnsimulatable(parsed.verify_log as (string | { cmd: string; expect: string })[])
+        if (rtEntries.length > 0) {
+          c.executionCtx.waitUntil(
+            launchRuntimeVerify(c.env, {
+              work_repo: parsed.work_repo,
+              work_commit: parsed.work_commit,
+              hunt: parsed.hunt,
+              clue: String(parsed.clue),
+              entries: rtEntries,
+            }).catch(() => undefined),
+          )
+        }
+      } catch {
+        // runtime tier is best-effort; the structural gate is unaffected
+      }
+    }
   }
 
   // Try to auto-claim a matching ACTIVE OPS row for each detected COMPLETE.md.
@@ -1328,6 +1352,24 @@ app.route('/api/brain', brainXpRoutes)
 // Health check
 // C2.1: decoupled runtime-verifier verdict sink (advisory; additive, never gates promotion)
 app.post('/api/runtime-verdict', handleRuntimeVerdict)
+
+// C2.1: manual/on-demand runtime-verify trigger (authed). Same launcher the webhook hook uses.
+app.post('/api/runtime-verify', async (c) => {
+  const key = c.req.header('X-Runtime-Verify-Key')
+  if (!key || key !== c.env.GITHUB_WEBHOOK_SECRET) return c.json({ ok: false, error: 'unauthorized' }, 401)
+  let b: Record<string, unknown>
+  try { b = (await c.req.json()) as Record<string, unknown> } catch { return c.json({ ok: false, error: 'invalid JSON' }, 400) }
+  const entries = Array.isArray(b.entries) ? (b.entries as { cmd: string; expect: string }[]) : []
+  const res = await launchRuntimeVerify(c.env, {
+    work_repo: String(b.work_repo || ''),
+    work_commit: String(b.work_commit || ''),
+    hunt: String(b.hunt || ''),
+    clue: String(b.clue || ''),
+    branch: b.branch ? String(b.branch) : undefined,
+    entries,
+  })
+  return c.json(res, res.ok ? 202 : 400)
+})
 
 app.get('/health', (c) => c.json({ status: 'ok', worker: 'thechefos-brain-write', version: '0.7.0', features: ['brain-push', 'session-state', 'github-webhook', 'ops-board', 'playtester'] }))
 
