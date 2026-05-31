@@ -450,3 +450,64 @@ describe('C2 expect evaluator — unknown predicate is a reject', () => {
     expect(result.failing_entry!.detail).toMatch(/unknown expect predicate/)
   })
 })
+
+// ─── C2.2 — deferred-unsimulatable path (flag-gated; RUNTIME_DEFER='true') ────
+// Existing 4 fixtures above run flag OFF (legacy 127-reject) and must stay green.
+// These exercise the new opt-in deferral semantics.
+const DEFER_ENV: ReproduceEnv = { GITHUB_TOKEN: 'test-msw-mocked', RUNTIME_DEFER: 'true' }
+const C22_COMMIT = 'd4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5'
+const GODOT_ENTRY = {
+  cmd: 'godot --headless --script artifact/agent.gd 2>&1',
+  expect: 'stdout_contains:status=',
+  claim: 'agent.gd smoke-invoked headless',
+}
+
+describe('C2.2 — deferred-unsimulatable path (flag-gated)', () => {
+  it('all-deferred (only a godot entry) → REJECTED by guardrail', async () => {
+    const result = await reproduceEntries([GODOT_ENTRY], 'AetherCreator/SuperClaude', C22_COMMIT, DEFER_ENV)
+    expect(result.verdict).toBe('REJECTED')
+    expect(result.deferred_count).toBe(1)
+    expect(result.failing_entry).toBeDefined()
+    expect(result.failing_entry!.detail).toContain('all verify_log entries deferred')
+  })
+
+  it('godot (deferred) + passing simulatable → APPLIED with deferred entry recorded', async () => {
+    server.use(
+      contentsHandler({
+        [C22_COMMIT]: { 'artifact/agent.gd': '# agent\nprint("status=ok")\n' },
+      }),
+    )
+    const entries = [
+      GODOT_ENTRY,
+      { cmd: 'test -f artifact/agent.gd', expect: 'exit==0', claim: 'agent.gd present' },
+    ]
+    const result = await reproduceEntries(entries, 'AetherCreator/SuperClaude', C22_COMMIT, DEFER_ENV)
+    expect(result.verdict).toBe('APPLIED')
+    expect(result.deferred_count).toBe(1)
+    expect(result.entries[0].deferred).toBe(true)
+    expect(result.entries[1].pass).toBe(true)
+  })
+
+  it('godot (deferred) + FAILING simulatable → REJECTED on the real failing entry (deferral never rescues a genuine fail)', async () => {
+    server.use(
+      contentsHandler({
+        [C22_COMMIT]: { 'artifact/missing.gd': null },
+      }),
+    )
+    const entries = [
+      GODOT_ENTRY,
+      { cmd: 'test -f artifact/missing.gd', expect: 'exit==0', claim: 'missing file' },
+    ]
+    const result = await reproduceEntries(entries, 'AetherCreator/SuperClaude', C22_COMMIT, DEFER_ENV)
+    expect(result.verdict).toBe('REJECTED')
+    expect(result.failing_entry!.cmd).toBe('test -f artifact/missing.gd')
+    expect(result.failing_entry!.pass).toBe(false)
+  })
+
+  it('flag OFF: same godot entry → REJECTED at the godot entry (legacy 127 path, gate unchanged)', async () => {
+    const result = await reproduceEntries([GODOT_ENTRY], 'AetherCreator/SuperClaude', C22_COMMIT, REPRODUCE_ENV)
+    expect(result.verdict).toBe('REJECTED')
+    expect(result.failing_entry!.cmd).toBe(GODOT_ENTRY.cmd)
+    expect(result.deferred_count ?? 0).toBe(0)
+  })
+})

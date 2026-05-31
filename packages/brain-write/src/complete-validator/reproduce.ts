@@ -18,6 +18,9 @@ const TOTAL_TIMEOUT_MS = 90_000
 
 export interface ReproduceEnv {
   GITHUB_TOKEN: string
+  // C2.2 (flag-gated, default off): when 'true', unsimulatable verify_log entries are
+  // DEFERRED to the decoupled runtime tier instead of being 127-rejected structurally.
+  RUNTIME_DEFER?: string
 }
 
 export interface EntryResult {
@@ -28,6 +31,7 @@ export interface EntryResult {
   actual_exit: number
   actual_stdout: string
   detail: string
+  deferred?: boolean
 }
 
 export interface ReproduceResult {
@@ -35,6 +39,7 @@ export interface ReproduceResult {
   failing_entry?: EntryResult
   entries: EntryResult[]
   wall_ms: number
+  deferred_count?: number
 }
 
 // ─── Hermeticity guard ───────────────────────────────────────────────────────
@@ -232,6 +237,8 @@ export async function reproduceEntries(
 ): Promise<ReproduceResult> {
   const wallStart = Date.now()
   const results: EntryResult[] = []
+  const deferUnsim = env.RUNTIME_DEFER === 'true'
+  let deferredCount = 0
 
   for (const entry of entries) {
     if (Date.now() - wallStart > TOTAL_TIMEOUT_MS) {
@@ -270,6 +277,26 @@ export async function reproduceEntries(
     }
 
     const parsedCmd = parseCmd(entry.cmd)
+
+    // C2.2 (flag-gated): defer unsimulatable entries to the runtime tier. A deferred
+    // entry neither passes nor fails the STRUCTURAL verdict — the decoupled
+    // runtime-verifier re-runs it on the real toolchain (see runtime-verdict/launch.ts).
+    // Default OFF: when deferUnsim is false, the legacy 127-reject path below runs unchanged.
+    if (deferUnsim && parsedCmd.type === 'unsimulatable') {
+      results.push({
+        cmd: entry.cmd,
+        expect: entry.expect,
+        claim: entry.claim,
+        pass: false,
+        deferred: true,
+        actual_exit: 0,
+        actual_stdout: '',
+        detail: `deferred to runtime tier: ${parsedCmd.reason}`,
+      })
+      deferredCount++
+      continue
+    }
+
     let actual: CmdActual
 
     try {
@@ -302,5 +329,22 @@ export async function reproduceEntries(
     }
   }
 
-  return { verdict: 'APPLIED', entries: results, wall_ms: Date.now() - wallStart }
+  // C2.2 all-deferred guardrail: a COMPLETE whose entries are ALL deferred has zero
+  // structurally-verified evidence — refuse to apply (would promote unverified work).
+  if (deferUnsim && deferredCount > 0 && results.length - deferredCount === 0) {
+    const last = results[results.length - 1]
+    return {
+      verdict: 'REJECTED',
+      failing_entry: {
+        ...last,
+        pass: false,
+        detail: 'all verify_log entries deferred to runtime tier — no structurally-verified evidence; refusing to apply',
+      },
+      entries: results,
+      deferred_count: deferredCount,
+      wall_ms: Date.now() - wallStart,
+    }
+  }
+
+  return { verdict: 'APPLIED', entries: results, deferred_count: deferredCount, wall_ms: Date.now() - wallStart }
 }
