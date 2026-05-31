@@ -37,3 +37,11 @@ binding = "SUPERCLAUDE_BRAIN"
 database_name = "superclaude-brain"
 database_id = "c9f55aaf-ac80-4111-b78e-9339a2f8e377"
 migrations_dir = "migrations"
+
+[vars]
+# C2.2 runtime-verify rollout (2026-05-31): defer unsimulatable verify_log entries to the
+# decoupled runtime tier (RUNTIME_DEFER) + enforce the runtime verdict via replay-driven
+# AND-in (RUNTIME_REQUIRED). Dedicated RUNTIME_VERIFY_KEY deferred (coordinated rotation;
+# fallback to GITHUB_WEBHOOK_SECRET keeps on-box callbacks working until then).
+RUNTIME_DEFER = "true"
+RUNTIME_REQUIRED = "true"
