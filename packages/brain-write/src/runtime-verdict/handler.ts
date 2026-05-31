@@ -7,13 +7,13 @@
 // Decoupled from the structural gate: this is a SEPARATE, additive verdict tier.
 // It never blocks or alters COMPLETE.md promotion. Phase 1 = record only.
 //
-// Auth: shared key via header X-Runtime-Verify-Key, compared to GITHUB_WEBHOOK_SECRET.
-// TODO(C2.2): mint a dedicated RUNTIME_VERIFY_KEY secret rather than reusing the
-//             webhook HMAC secret as a bearer token.
+// Auth: header X-Runtime-Verify-Key, compared to RUNTIME_VERIFY_KEY (C2.2 dedicated
+// secret), falling back to GITHUB_WEBHOOK_SECRET until the on-box script is rotated.
 import type { Context } from 'hono'
 
 interface RuntimeVerdictEnv {
   GITHUB_WEBHOOK_SECRET: string
+  RUNTIME_VERIFY_KEY?: string
   SUPERCLAUDE_BRAIN?: D1Database
 }
 
@@ -33,9 +33,10 @@ interface RuntimeVerdictBody {
 export async function handleRuntimeVerdict(c: Context): Promise<Response> {
   const env = c.env as RuntimeVerdictEnv
 
-  // Auth
+  // Auth — dedicated RUNTIME_VERIFY_KEY (C2.2), fallback to webhook secret pre-rotation
+  const expected = env.RUNTIME_VERIFY_KEY || env.GITHUB_WEBHOOK_SECRET
   const key = c.req.header('X-Runtime-Verify-Key')
-  if (!key || key !== env.GITHUB_WEBHOOK_SECRET) {
+  if (!key || key !== expected) {
     return c.json({ ok: false, error: 'unauthorized' }, 401)
   }
 
@@ -87,4 +88,29 @@ export async function handleRuntimeVerdict(c: Context): Promise<Response> {
     ok: true,
     stored: { hunt, clue, work_commit: workCommit, all_pass: allPass === 1, total, passed, failed },
   })
+}
+
+// C2.2 required-mode: read a prior runtime verdict for (hunt, clue, work_commit).
+// Returns null when D1 is unbound, no row exists, or on any error (absence never blocks —
+// design A is replay-driven: a fail row blocks; an absent row means first delivery, advisory).
+export async function getRuntimeVerdict(
+  env: { SUPERCLAUDE_BRAIN?: D1Database },
+  hunt: string,
+  clue: string,
+  workCommit: string,
+): Promise<{ all_pass: number; total: number; passed: number; failed: number } | null> {
+  const db = env.SUPERCLAUDE_BRAIN
+  if (!db) return null
+  try {
+    const row = await db
+      .prepare(
+        `SELECT all_pass, total, passed, failed FROM runtime_verdicts
+         WHERE hunt = ? AND clue = ? AND work_commit = ? LIMIT 1`,
+      )
+      .bind(hunt, clue, workCommit)
+      .first<{ all_pass: number; total: number; passed: number; failed: number }>()
+    return row ?? null
+  } catch {
+    return null
+  }
 }

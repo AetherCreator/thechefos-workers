@@ -13,7 +13,7 @@ import { readSpiritTierForAudit } from './spirit/middleware-hook'
 import { brainXpRoutes } from './brain-xp/routes'
 import { touchXp } from './brain-xp/index'
 import type { BrainXpEnv } from './brain-xp/index'
-import { handleRuntimeVerdict } from './runtime-verdict/handler'
+import { handleRuntimeVerdict, getRuntimeVerdict } from './runtime-verdict/handler'
 import { launchRuntimeVerify, selectUnsimulatable } from './runtime-verdict/launch'
 
 const REPO_OWNER = 'AetherCreator'
@@ -48,6 +48,10 @@ export interface Env {
   // C2.1 decoupled runtime-verifier (advisory): Shell Bridge launch target
   SHELL_BRIDGE_URL?: string
   SHELL_BRIDGE_KEY?: string
+  // C2.2 (flag-gated, default off): defer unsimulatable entries + replay-driven required AND-in
+  RUNTIME_DEFER?: string
+  RUNTIME_REQUIRED?: string
+  RUNTIME_VERIFY_KEY?: string
 }
 
 interface BrainPushPayload {
@@ -215,6 +219,23 @@ app.post('/api/webhook/github', async (c) => {
     const result = await validateComplete(fileText.text, c.env)
     const parsed = result.verdict === 'applied' ? result.parsed : null
     const agent = result.verdict === 'applied' ? result.agent : 'unknown'
+    // C2.2 required-mode consult (design A, replay-driven): if the decoupled runtime tier
+    // has already recorded a FAIL for this work_commit, override applied->blocked. An absent
+    // verdict = first delivery -> advisory (the hook below launches it; a replay then enforces).
+    let runtimeBlockDetail: string | undefined
+    if (c.env.RUNTIME_REQUIRED === 'true' && parsed) {
+      try {
+        const rt = selectUnsimulatable(parsed.verify_log as (string | { cmd: string; expect: string })[])
+        if (rt.length > 0) {
+          const rv = await getRuntimeVerdict(c.env, parsed.hunt, String(parsed.clue), parsed.work_commit)
+          if (rv && rv.all_pass === 0) {
+            runtimeBlockDetail = `runtime verify FAILED (${rv.failed}/${rv.total}) for ${parsed.work_commit.slice(0, 8)}`
+          }
+        }
+      } catch {
+        // consult is best-effort; absence never blocks (advisory on first delivery)
+      }
+    }
     // H3 v1.1 SubDiv #3: preserve source COMPLETE.md run_id in audit (distinct
     // from audit's own collision-safe run_id). Validator's discriminated union
     // discards parsed data on blocked verdicts; we re-parse YAML best-effort here.
@@ -241,6 +262,11 @@ app.post('/api/webhook/github', async (c) => {
     )
     // Pb.C2 Phase C — attach spirit tier at audit time (soft-degrades to 'steady', never throws)
     entry.spirit_tier = await readSpiritTierForAudit(c.env)
+    // C2.2: apply the required-mode runtime block before the audit commit so the audit
+    // and downstream promotion (blockedFiles) reflect the runtime failure.
+    if (runtimeBlockDetail) {
+      entry.verdict = 'blocked_runtime_verify_failed'
+    }
     const auditCommit = await commitAuditEntry(entry, c.env)
     const blocked = entry.verdict.startsWith('blocked_')
     const vr: (typeof validatorResults)[number] = {
@@ -1355,8 +1381,9 @@ app.post('/api/runtime-verdict', handleRuntimeVerdict)
 
 // C2.1: manual/on-demand runtime-verify trigger (authed). Same launcher the webhook hook uses.
 app.post('/api/runtime-verify', async (c) => {
+  const expected = c.env.RUNTIME_VERIFY_KEY || c.env.GITHUB_WEBHOOK_SECRET
   const key = c.req.header('X-Runtime-Verify-Key')
-  if (!key || key !== c.env.GITHUB_WEBHOOK_SECRET) return c.json({ ok: false, error: 'unauthorized' }, 401)
+  if (!key || key !== expected) return c.json({ ok: false, error: 'unauthorized' }, 401)
   let b: Record<string, unknown>
   try { b = (await c.req.json()) as Record<string, unknown> } catch { return c.json({ ok: false, error: 'invalid JSON' }, 400) }
   const entries = Array.isArray(b.entries) ? (b.entries as { cmd: string; expect: string }[]) : []
