@@ -17,6 +17,8 @@
 # expect grammar (verify-standard subset): exit==0 | exit!=0 | exit==N |
 #   stdout_contains:<TOKEN> | grep_count>=N | grep_count==0
 # --callback-url: verdict is POSTed as JSON with header X-Runtime-Verify-Key: <key>
+#   If --callback-key is omitted, it defaults to /opt/secrets/brain-write-github-webhook-secret
+#   (so callers — e.g. the Worker launch — never place the secret in the command).
 set -uo pipefail
 
 WORK_REPO=""; WORK_COMMIT=""; HUNT=""; CLUE=""; BRANCH=""; ENTRIES=""; OUT=""
@@ -45,6 +47,11 @@ command -v python3 >/dev/null 2>&1 || { echo "python3 required" >&2; exit 3; }
 GODOT="${GODOT_BIN:-/usr/local/bin/godot}"
 TOKEN=""
 [ -f /opt/secrets/github-token ] && TOKEN="$(cat /opt/secrets/github-token)"
+
+# Callback key defaults to the on-box webhook secret (keeps secrets out of Shell-Bridge logs)
+if [ -n "$CALLBACK_URL" ] && [ -z "$CALLBACK_KEY" ] && [ -f /opt/secrets/brain-write-github-webhook-secret ]; then
+  CALLBACK_KEY="$(tr -d '\r\n' < /opt/secrets/brain-write-github-webhook-secret)"
+fi
 
 WORKDIR="$(mktemp -d /tmp/rv-XXXXXX)"
 cleanup() { rm -rf "$WORKDIR"; }
